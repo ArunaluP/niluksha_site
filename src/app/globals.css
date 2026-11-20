@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Theme: light glassmorphism
+   Soft lavender base + blurred colour blobs, frosted white panels,
+   indigo/violet accent.
+   ------------------------------------------------------------------ */
+@theme {
+  --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, Arial, sans-serif;
+
+  --color-ink: #1f1d3d; /* main text */
+  --color-muted: #6b6b8d; /* secondary text */
+  --color-accent: #6658f5; /* indigo-violet */
+  --color-accent-2: #8b5cf6;
+  --color-accent-soft: #ecebff;
+}
+
+html,
+body {
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The app background: fixed so the glass panels scroll over it. */
+.app-bg {
+  min-height: 100vh;
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, #f4f5fe 0%, #eceefc 45%, #f1f2fe 100%);
+}
+.app-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38rem 30rem at 88% 6%, rgba(165, 180, 252, 0.55), transparent 62%),
+    radial-gradient(30rem 26rem at 6% 78%, rgba(96, 165, 250, 0.42), transparent 62%),
+    radial-gradient(34rem 24rem at 52% 104%, rgba(196, 181, 253, 0.5), transparent 62%),
+    radial-gradient(20rem 16rem at 98% 92%, rgba(253, 186, 116, 0.32), transparent 62%),
+    radial-gradient(22rem 18rem at 34% 18%, rgba(224, 231, 255, 0.9), transparent 70%);
+  filter: blur(8px);
+}
+
+/* Frosted glass panels */
+@utility glass {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow:
+    0 10px 30px -12px rgba(76, 81, 191, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  border-radius: 1.25rem;
+}
+
+@utility glass-strong {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 14px 40px -16px rgba(76, 81, 191, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  border-radius: 1.25rem;
+}
+
+/* Inputs share one look */
+@utility field {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(203, 207, 240, 0.9);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.6rem 0.85rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background 0.15s;
+  &::placeholder {
+    color: #9a9ab8;
+  }
+  &:focus {
+    border-color: var(--color-accent);
+    background: #fff;
+    box-shadow: 0 0 0 4px rgba(102, 88, 245, 0.12);
+  }
+  &[aria-invalid="true"] {
+    border-color: #f43f5e;
+  }
+}
+
+/* Thin, quiet scrollbars inside panels */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(102, 88, 245, 0.25) transparent;
+}
+
+/* Printing (invoice): plain white page, hide the app chrome. */
+@media print {
+  .app-bg::before {
+    display: none;
+  }
+  .app-bg {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Alternative background: "Crystal Edge" aura (src/components/aura-background.tsx).
+   Not used by default. To try it, in src/app/layout.tsx replace
+   <body className="app-bg antialiased">{children}…  with
+   <body className="antialiased"><AuraBackground>{children}</AuraBackground>…
+   ------------------------------------------------------------------ */
+.aura-bg {
+  position: relative;
+  overflow: clip; /* clip (not hidden) keeps the sticky sidebar working */
+  min-height: 100vh;
+  background-color: #faf8f2; /* the multiply layers blend against this */
+}
+.aura-layer {
+  position: fixed;
+  inset: 0;
+  mix-blend-mode: multiply;
+  transform: translateZ(0);
+  will-change: transform;
+  pointer-events: none;
+}
+.aura-layer-1 {
+  background: conic-gradient(from 135deg at 30% 40%, #818cf8, #c084fc, #f0abfc, #93c5fd, #818cf8);
+  filter: blur(150px);
+}
+.aura-layer-2 {
+  background: conic-gradient(from 315deg at 70% 60%, #a78bfa, #67e8f9, #86efac, #a78bfa);
+  filter: blur(175px);
+}
+@media (min-width: 768px) {
+  .aura-layer-1 {
+    filter: blur(216px);
+  }
+  .aura-layer-2 {
+    filter: blur(252px);
+  }
+}
+.aura-content {
+  position: relative;
+  z-index: 1;
+}
+@media print {
+  .aura-layer {
+    display: none;
+  }
+  .aura-bg {
+    background: #fff;
+  }
+}

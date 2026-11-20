@@ -1,0 +1,2614 @@
+{
+  "info": {
+    "name": "Care Booking API (Niluksha)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Run the folders top to bottom. Login first; Postman keeps the session cookie. IDs are saved into collection variables automatically. {{today}} / {{tomorrow}} are Sri Lanka dates set before each request."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Sri Lanka dates (UTC+5:30) for {{today}} and {{tomorrow}}",
+          "const lk = new Date(Date.now() + 5.5 * 3600 * 1000);",
+          "pm.collectionVariables.set('today', lk.toISOString().slice(0, 10));",
+          "pm.collectionVariables.set('tomorrow', new Date(lk.getTime() + 86400000).toISOString().slice(0, 10));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@company.lk"
+    },
+    {
+      "key": "adminPassword",
+      "value": "Admin@1234"
+    },
+    {
+      "key": "today",
+      "value": ""
+    },
+    {
+      "key": "tomorrow",
+      "value": ""
+    },
+    {
+      "key": "branchId",
+      "value": ""
+    },
+    {
+      "key": "callUserId",
+      "value": ""
+    },
+    {
+      "key": "managerUserId",
+      "value": ""
+    },
+    {
+      "key": "hospitalId",
+      "value": ""
+    },
+    {
+      "key": "employeeId",
+      "value": ""
+    },
+    {
+      "key": "employee2Id",
+      "value": ""
+    },
+    {
+      "key": "leaveId",
+      "value": ""
+    },
+    {
+      "key": "customerId",
+      "value": ""
+    },
+    {
+      "key": "patientId",
+      "value": ""
+    },
+    {
+      "key": "patient2Id",
+      "value": ""
+    },
+    {
+      "key": "bookingId",
+      "value": ""
+    },
+    {
+      "key": "booking2Id",
+      "value": ""
+    },
+    {
+      "key": "invoiceId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Auth",
+      "item": [
+        {
+          "name": "Login as admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Sets the cb_session cookie. Postman keeps it for all later requests."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Who am I",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Master data (run once, as admin)",
+      "item": [
+        {
+          "name": "Create branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/branches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "branches"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"KDW\",\n  \"name\": \"Kadawatha\",\n  \"phone\": \"0112345678\",\n  \"address\": \"Main St, Kadawatha\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('branchId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List branches",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/branches?search=&active=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "branches"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "active",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get branch",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/branches/{{branchId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "branches",
+                "{{branchId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update branch",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/branches/{{branchId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "branches",
+                "{{branchId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0112345679\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create call-center user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Call Agent\",\n  \"email\": \"call@test.lk\",\n  \"password\": \"Call@1234\",\n  \"role\": \"call_center\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('callUserId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create branch manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"KDW Manager\",\n  \"email\": \"mgr@test.lk\",\n  \"password\": \"Mgr@12345\",\n  \"role\": \"branch_manager\",\n  \"branchId\": \"{{branchId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('managerUserId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set branch manager",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/branches/{{branchId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "branches",
+                "{{branchId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"managerUserId\": \"{{managerUserId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?role=&search=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "role",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update user (reset password / disable)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{callUserId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{callUserId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Call@1234\",\n  \"isActive\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create hospital",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hospitals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hospitals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Asiri Central\",\n  \"type\": \"private\",\n  \"city\": \"Colombo\",\n  \"phone\": \"0114665500\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('hospitalId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List hospitals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hospitals?type=&search=&active=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hospitals"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": ""
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "active",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update hospital",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/hospitals/{{hospitalId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "hospitals",
+                "{{hospitalId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"city\": \"Colombo 10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchId\": \"{{branchId}}\",\n  \"fullName\": \"Nimali Perera\",\n  \"gender\": \"female\",\n  \"phone\": \"0711111111\",\n  \"nic\": \"199012345678\",\n  \"designation\": \"Caregiver\",\n  \"joinDate\": \"{{today}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('employeeId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create employee 2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"branchId\": \"{{branchId}}\",\n  \"fullName\": \"Kumari Silva\",\n  \"gender\": \"female\",\n  \"phone\": \"0722222222\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('employee2Id', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List employees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees?branchId=&status=active&search=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ],
+              "query": [
+                {
+                  "key": "branchId",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": "active"
+                },
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get employee (with leaves)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employeeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update employee",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees/{{employeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employeeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"10 Lake Rd, Kadawatha\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add leave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees/{{employee2Id}}/leaves",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employee2Id}}",
+                "leaves"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromDate\": \"{{tomorrow}}\",\n  \"toDate\": \"{{tomorrow}}\",\n  \"reason\": \"Personal\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('leaveId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List leaves",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees/{{employee2Id}}/leaves",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employee2Id}}",
+                "leaves"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete leave",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/leaves/{{leaveId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "leaves",
+                "{{leaveId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/settings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Niluksha Care Services\",\n  \"company_address\": \"Kadawatha\",\n  \"company_phone\": \"0112345678\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Booking flow (main workflow)",
+      "item": [
+        {
+          "name": "Create customer + patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/customers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "customers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Ruwan Jayasinghe\",\n  \"phone\": \"0771234567\",\n  \"nic\": \"198512345678\",\n  \"address\": \"12 Temple Rd, Kadawatha\",\n  \"city\": \"Kadawatha\",\n  \"patients\": [\n    {\n      \"fullName\": \"Mrs. Jayasinghe\",\n      \"gender\": \"female\",\n      \"relationship\": \"parent\",\n      \"careNotes\": \"Diabetic, needs help walking\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('customerId', res.data.id);",
+                  "if (res.ok) pm.collectionVariables.set('patientId', res.data.patients[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Search customer by phone",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/customers?q=0771234567",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "customers"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "0771234567"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get customer profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/customers/{{customerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "customers",
+                "{{customerId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add another patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/customers/{{customerId}}/patients",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "customers",
+                "{{customerId}}",
+                "patients"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Mr. Jayasinghe\",\n  \"gender\": \"male\",\n  \"relationship\": \"parent\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('patient2Id', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking (home, today)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"patientId\": \"{{patientId}}\",\n  \"serviceDate\": \"{{today}}\",\n  \"startTime\": \"08:00\",\n  \"locationType\": \"home\",\n  \"notes\": \"First session\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('bookingId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create booking (hospital, tomorrow)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"patientId\": \"{{patient2Id}}\",\n  \"serviceDate\": \"{{tomorrow}}\",\n  \"startTime\": \"19:00\",\n  \"locationType\": \"hospital\",\n  \"hospitalId\": \"{{hospitalId}}\",\n  \"wardRoom\": \"Ward 5, Bed 12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('booking2Id', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit booking (pending/confirmed only)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startTime\": \"07:30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call list - today (pending)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/call-list?day=today&view=pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "call-list"
+              ],
+              "query": [
+                {
+                  "key": "day",
+                  "value": "today"
+                },
+                {
+                  "key": "view",
+                  "value": "pending"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call list - tomorrow (all)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/call-list?day=tomorrow&view=all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "call-list"
+              ],
+              "query": [
+                {
+                  "key": "day",
+                  "value": "tomorrow"
+                },
+                {
+                  "key": "view",
+                  "value": "all"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Customer confirmed by phone\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ignore booking (tomorrow one)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{booking2Id}}/ignore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{booking2Id}}",
+                "ignore"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Customer said not needed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Available employees for booking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/available-employees",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "available-employees"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Available employees on a date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/employees/available?date={{today}}&branchId=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "available"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{today}}"
+                },
+                {
+                  "key": "branchId",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": \"{{employeeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reassign to another employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": \"{{employee2Id}}\",\n  \"note\": \"Nimali unavailable\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign (back to confirmed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/unassign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "unassign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/assign",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "assign"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": \"{{employeeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Deliver (creates invoice)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/deliver",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "deliver"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Session completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('invoiceId', res.data.invoiceId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Booking detail + history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Invoices",
+      "item": [
+        {
+          "name": "List invoices waiting to print",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/invoices?status=generated&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "generated"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invoice detail (for printing)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/invoices/{{invoiceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "{{invoiceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Record a print",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/invoices/{{invoiceId}}/print",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "{{invoiceId}}",
+                "print"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mark invoice printed (closes booking)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/invoices/{{invoiceId}}/mark-printed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "invoices",
+                "{{invoiceId}}",
+                "mark-printed"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Handed to customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Lists & dashboard",
+      "item": [
+        {
+          "name": "Bookings - filter",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings?from={{today}}&to={{tomorrow}}&status=pending,confirmed,assigned&q=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "{{today}}"
+                },
+                {
+                  "key": "to",
+                  "value": "{{tomorrow}}"
+                },
+                {
+                  "key": "status",
+                  "value": "pending,confirmed,assigned"
+                },
+                {
+                  "key": "q",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings - by customer",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings?customerId={{customerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ],
+              "query": [
+                {
+                  "key": "customerId",
+                  "value": "{{customerId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard?date={{today}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{today}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Try other roles",
+      "item": [
+        {
+          "name": "Login as call center",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"call@test.lk\",\n  \"password\": \"Call@1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Call center: create branch (expect 403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/branches",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "branches"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"X1\",\n  \"name\": \"X\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test('refused with 403 (correct)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as branch manager",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mgr@test.lk\",\n  \"password\": \"Mgr@12345\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manager: bookings (own branch only)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manager: call list (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/call-list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "call-list"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test('refused with 403 (correct)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as admin again",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Shows what each role may NOT do: the '(expect 403)' requests pass when the server refuses them."
+    }
+  ]
+}
