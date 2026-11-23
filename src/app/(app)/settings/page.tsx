@@ -1,4 +1,5 @@
-import { Card, money, PageHeader } from "@/components/ui";
+import { Package } from "lucide-react";
+import { Card, LinkButton, PageHeader } from "@/components/ui";
 import { requirePermission } from "@/lib/dal";
 import { getSettings } from "@/lib/settings";
 import { SettingsForm } from "./settings-form";
@@ -10,20 +11,25 @@ export default async function SettingsPage() {
   const s = await getSettings();
   return (
     <div className="max-w-3xl">
-      <PageHeader title="Settings" subtitle="Company details for invoices and the price of a session" />
+      <PageHeader title="Settings" subtitle="Company details shown on invoices" />
       <Card strong className="p-6">
         <SettingsForm
           initial={{
             company_name: s.company_name ?? "",
             company_address: s.company_address ?? "",
             company_phone: s.company_phone ?? "",
-            session_rate: s.session_rate ?? "4500.00",
           }}
         />
       </Card>
-      <p className="mt-3 text-xs text-muted">
-        Current rate: {money(s.session_rate)} per 24-hour session. A new rate applies to bookings created after you save; existing bookings keep their rate.
-      </p>
+      <Card className="mt-4 flex items-center justify-between gap-4 p-5">
+        <div>
+          <div className="font-medium">Prices and session lengths</div>
+          <div className="text-sm text-muted">These are set per package, e.g. "Standard 24 hours – Rs. 4,500".</div>
+        </div>
+        <LinkButton href="/packages" variant="secondary">
+          <Package size={15} /> Packages
+        </LinkButton>
+      </Card>
     </div>
   );
 }

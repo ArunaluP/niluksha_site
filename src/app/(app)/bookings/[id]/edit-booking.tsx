@@ -1,11 +1,12 @@
 "use client";
 
+import { BED_MAX, WARD_MAX } from "@/lib/lk-rules";
 import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateBookingAction } from "@/app/(app)/_actions/bookings";
-import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { Button, Field, Input, money, Select, Textarea } from "@/components/ui";
 import { Dialog } from "@/components/ui/client";
 
 type Props = {
@@ -14,24 +15,30 @@ type Props = {
     bookingNo: string;
     serviceDate: string;
     startTime: string;
+    packageId: number | null;
+    packageName: string | null;
     locationType: "home" | "hospital";
     hospitalId: number | null;
-    wardRoom: string | null;
+    wardNo: string | null;
+    bedNo: string | null;
     serviceAddress: string | null;
     notes: string | null;
   };
   hospitals: { id: number; name: string; city: string | null }[];
+  packages: { id: number; name: string; durationHours: number; price: string }[];
   today: string;
 };
 
-export function EditBookingButton({ booking, hospitals, today }: Props) {
+export function EditBookingButton({ booking, hospitals, packages, today }: Props) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({
     serviceDate: booking.serviceDate,
     startTime: booking.startTime.slice(0, 5),
+    packageId: booking.packageId ? String(booking.packageId) : "",
     locationType: booking.locationType,
     hospitalId: booking.hospitalId ? String(booking.hospitalId) : "",
-    wardRoom: booking.wardRoom ?? "",
+    wardNo: booking.wardNo ?? "",
+    bedNo: booking.bedNo ?? "",
     serviceAddress: booking.serviceAddress ?? "",
     notes: booking.notes ?? "",
   });
@@ -45,9 +52,11 @@ export function EditBookingButton({ booking, hospitals, today }: Props) {
         id: booking.id,
         serviceDate: f.serviceDate,
         startTime: f.startTime,
+        ...(f.packageId && f.packageId !== String(booking.packageId) ? { packageId: Number(f.packageId) } : {}),
         locationType: f.locationType,
         hospitalId: f.locationType === "hospital" ? (f.hospitalId ? Number(f.hospitalId) : null) : null,
-        wardRoom: f.locationType === "hospital" ? f.wardRoom : null,
+        wardNo: f.locationType === "hospital" ? f.wardNo : null,
+        bedNo: f.locationType === "hospital" ? f.bedNo : null,
         serviceAddress: f.locationType === "home" ? f.serviceAddress : null,
         notes: f.notes,
       });
@@ -69,6 +78,18 @@ export function EditBookingButton({ booking, hospitals, today }: Props) {
       </Button>
       <Dialog open={open} onClose={() => setOpen(false)} title={`Edit ${booking.bookingNo}`} subtitle="Details can be changed until an employee is assigned.">
         <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Package" error={err.packageId} className="sm:col-span-2" hint="Changing the package also changes the hours and price of this booking.">
+            <Select value={f.packageId} onChange={(e) => setF({ ...f, packageId: e.target.value })}>
+              {/* a package that was made inactive later still shows for this booking */}
+              {booking.packageId && !packages.some((p) => p.id === booking.packageId) && <option value={String(booking.packageId)}>{booking.packageName} (no longer offered)</option>}
+              {!booking.packageId && <option value="">—</option>}
+              {packages.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {p.durationHours} h · {money(p.price)}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Date" error={err.serviceDate}>
             <Input type="date" min={today} value={f.serviceDate} onChange={(e) => setF({ ...f, serviceDate: e.target.value })} />
           </Field>
@@ -87,7 +108,7 @@ export function EditBookingButton({ booking, hospitals, today }: Props) {
             </Field>
           ) : (
             <>
-              <Field label="Hospital" error={err.hospitalId}>
+              <Field label="Hospital" error={err.hospitalId} className="sm:col-span-2">
                 <Select value={f.hospitalId} onChange={(e) => setF({ ...f, hospitalId: e.target.value })}>
                   <option value="">Select hospital</option>
                   {hospitals.map((h) => (
@@ -98,8 +119,11 @@ export function EditBookingButton({ booking, hospitals, today }: Props) {
                   ))}
                 </Select>
               </Field>
-              <Field label="Ward / room" error={err.wardRoom}>
-                <Input value={f.wardRoom} onChange={(e) => setF({ ...f, wardRoom: e.target.value })} />
+              <Field label="Ward no" required error={err.wardNo}>
+                <Input value={f.wardNo} maxLength={WARD_MAX} onChange={(e) => setF({ ...f, wardNo: e.target.value })} placeholder="e.g. 5, 12A, ICU" />
+              </Field>
+              <Field label="Bed no" error={err.bedNo}>
+                <Input value={f.bedNo} maxLength={BED_MAX} onChange={(e) => setF({ ...f, bedNo: e.target.value })} placeholder="Optional, e.g. 12" />
               </Field>
             </>
           )}

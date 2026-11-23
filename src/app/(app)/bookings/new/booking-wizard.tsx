@@ -12,10 +12,26 @@ import {
   searchCustomersAction,
 } from "@/app/(app)/_actions/bookings";
 import { Avatar, Button, cn, Field, Input, LinkButton, money, niceDate, niceTime, Select, Textarea } from "@/components/ui";
+import { NameFields } from "@/components/app/name-fields";
+import {
+  checkCustomer,
+  checkNameParts,
+  checkRelationshipOther,
+  checkWardBed,
+  BED_MAX,
+  WARD_MAX,
+  EMAIL_MAX,
+  parseNic,
+  RELATIONSHIP_OTHER_MAX,
+  relationshipLabel,
+  selfPatientValues,
+  type CustomerFields,
+} from "@/lib/lk-rules";
 
-type Patient = { id: number; patientNo: string; fullName: string; gender: "male" | "female"; relationship: string; address: string | null; careNotes: string | null };
-type Customer = { id: number; customerNo: string; fullName: string; phone: string; altPhone: string | null; nic: string | null; address: string | null; city: string | null; patients: Patient[] };
+type Patient = { id: number; patientNo: string; fullName: string; gender: "male" | "female"; relationship: string; relationshipOther: string | null; address: string | null; careNotes: string | null };
+type Customer = { id: number; customerNo: string; fullName: string; firstName: string; middleName: string | null; lastName: string; dob: string | null; phone: string; altPhone: string | null; nic: string | null; address: string | null; city: string | null; patients: Patient[] };
 type SearchHit = { id: number; customerNo: string; fullName: string; phone: string; nic: string | null; city: string | null; patientCount: number };
+type PackageOpt = { id: number; name: string; durationHours: number; price: string; description: string | null; isDefault: boolean };
 type HospitalOpt = { id: number; name: string; type: "private" | "government"; city: string | null };
 type Errors = Record<string, string[] | undefined>;
 
@@ -31,12 +47,12 @@ const RELATIONSHIPS = [
 
 export function BookingWizard({
   hospitals,
-  rate,
+  packages,
   today,
   initialCustomer,
 }: {
   hospitals: HospitalOpt[];
-  rate: string;
+  packages: PackageOpt[];
   today: string;
   initialCustomer: Customer | null;
 }) {
@@ -50,7 +66,7 @@ export function BookingWizard({
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [newCust, setNewCust] = useState(false);
-  const [cust, setCust] = useState({ fullName: "", phone: "", altPhone: "", nic: "", address: "", city: "" });
+  const [cust, setCust] = useState({ firstName: "", middleName: "", lastName: "", phone: "", altPhone: "", email: "", nic: "", dob: "", address: "", city: "" });
   const [custErr, setCustErr] = useState<Errors>({});
 
   useEffect(() => {
@@ -73,7 +89,37 @@ export function BookingWizard({
     });
   }
 
+  function editCust(patch: Partial<typeof cust>) {
+    setCust((v) => ({ ...v, ...patch }));
+    setCustErr((e) => dropErrors(e, patch, cust));
+  }
+
+  /** Re-checks one field when the user leaves it (only once it has an error or a value). */
+  function checkCustField(name: keyof CustomerFields) {
+    const e = checkCustomer(cust)[name];
+    if (e) setCustErr((prev) => ({ ...prev, [name]: [e] }));
+  }
+
+  /** Leaving the NIC box: a valid NIC fills (and replaces) the date of birth. */
+  function fillFromNic() {
+    const n = cust.nic.trim() ? parseNic(cust.nic) : null;
+    if (n && !("error" in n)) {
+      setCust((v) => ({ ...v, dob: n.dob }));
+      setCustErr((e) => ({ ...e, nic: undefined, dob: undefined }));
+    } else checkCustField("nic");
+  }
+
+  // "Male · born 6 Dec 1985" under a valid NIC
+  const nicInfo = cust.nic.trim() ? parseNic(cust.nic) : null;
+  const nicHint = nicInfo && !("error" in nicInfo) ? `${nicInfo.gender === "male" ? "Male" : "Female"} · born ${niceDate(nicInfo.dob)}` : undefined;
+
   function saveCustomer() {
+    const e = checkCustomer(cust);
+    if (Object.keys(e).length) {
+      setCustErr(Object.fromEntries(Object.entries(e).map(([k, v]) => [k, [v]])));
+      toast.error("Please fix the highlighted fields.");
+      return;
+    }
     start(async () => {
       const r = await createCustomerAction(clean(cust));
       if (!r.ok) {
@@ -90,14 +136,30 @@ export function BookingWizard({
   }
 
   // ---------------- step 2: patient
-  const [pat, setPat] = useState({ fullName: "", gender: "" as "" | "male" | "female", relationship: "parent", dob: "", address: "", careNotes: "" });
+  const [pat, setPat] = useState({ firstName: "", middleName: "", lastName: "", gender: "" as "" | "male" | "female", relationship: "parent", relationshipOther: "", dob: "", address: "", careNotes: "" });
   const [patErr, setPatErr] = useState<Errors>({});
+
+  /** Update fields and drop their error messages as soon as the user edits them. */
+  function editPat(patch: Partial<typeof pat>) {
+    setPat((v) => ({ ...v, ...patch }));
+    setPatErr((e) => dropErrors(e, patch, pat));
+  }
   const patient = customer?.patients.find((p) => p.id === patientId) ?? null;
 
   function continueFromPatient() {
     if (patientId !== "new") return setStep(2);
+    const nameErr: Record<string, string> = { ...checkNameParts(pat) };
+    if (pat.relationship === "other") {
+      const r = checkRelationshipOther(pat.relationshipOther);
+      if (r) nameErr.relationshipOther = r;
+    }
+    if (Object.keys(nameErr).length) {
+      setPatErr(Object.fromEntries(Object.entries(nameErr).map(([k, v]) => [k, [v]])));
+      toast.error("Please fix the highlighted fields.");
+      return;
+    }
     start(async () => {
-      const r = await addPatientAction({ customerId: customer!.id, ...clean(pat), gender: pat.gender || undefined } as Parameters<typeof addPatientAction>[0]);
+      const r = await addPatientAction({ customerId: customer!.id, ...clean({ ...pat, relationshipOther: pat.relationship === "other" ? pat.relationshipOther : "" }), gender: pat.gender || undefined } as Parameters<typeof addPatientAction>[0]);
       if (!r.ok) {
         setPatErr(r.fieldErrors ?? {});
         toast.error(r.error);
@@ -112,20 +174,38 @@ export function BookingWizard({
   }
 
   // ---------------- step 3: session
-  const [ses, setSes] = useState({ serviceDate: today, startTime: "08:00", locationType: "home" as "home" | "hospital", hospitalId: "", wardRoom: "", serviceAddress: "", notes: "" });
+  const defaultPackageId = String((packages.find((p) => p.isDefault) ?? packages[0])?.id ?? "");
+  const [ses, setSes] = useState({ packageId: defaultPackageId, serviceDate: today, startTime: "08:00", locationType: "home" as "home" | "hospital", hospitalId: "", wardNo: "", bedNo: "", serviceAddress: "", notes: "" });
+  const selectedPackage = packages.find((p) => String(p.id) === ses.packageId) ?? null;
+  // "08:00" + 12 h → "20:00"; past midnight → next day
+  const [sh, sm] = ses.startTime.split(":").map(Number);
+  const endMinutes = (sh || 0) * 60 + (sm || 0) + (selectedPackage?.durationHours ?? 0) * 60;
+  const endsNextDay = endMinutes >= 24 * 60;
+  const endTime = `${String(Math.floor(endMinutes / 60) % 24).padStart(2, "0")}:${String(endMinutes % 60).padStart(2, "0")}`;
   const [sesErr, setSesErr] = useState<Errors>({});
   const defaultAddress = patient?.address || customer?.address || "";
 
   function submitBooking() {
+    if (ses.locationType === "hospital") {
+      const ward = checkWardBed(ses.wardNo, "Ward no");
+      const bed = ses.bedNo.trim() ? checkWardBed(ses.bedNo, "Bed no") : null;
+      if (ward || bed) {
+        setSesErr((er) => ({ ...er, ...(ward ? { wardNo: [ward] } : {}), ...(bed ? { bedNo: [bed] } : {}) }));
+        toast.error("Please fix the highlighted fields.");
+        return;
+      }
+    }
     start(async () => {
       const r = await createBookingAction({
         customerId: customer!.id,
         patientId: patient!.id,
+        packageId: ses.packageId ? Number(ses.packageId) : undefined,
         serviceDate: ses.serviceDate,
         startTime: ses.startTime,
         locationType: ses.locationType,
         hospitalId: ses.locationType === "hospital" && ses.hospitalId ? Number(ses.hospitalId) : undefined,
-        wardRoom: ses.locationType === "hospital" ? ses.wardRoom || undefined : undefined,
+        wardNo: ses.locationType === "hospital" ? ses.wardNo || undefined : undefined,
+        bedNo: ses.locationType === "hospital" ? ses.bedNo || undefined : undefined,
         serviceAddress: ses.locationType === "home" ? ses.serviceAddress || defaultAddress || undefined : undefined,
         notes: ses.notes || undefined,
       });
@@ -142,7 +222,7 @@ export function BookingWizard({
 
   function reset(keepCustomer: boolean) {
     setDone(null);
-    setSes({ serviceDate: today, startTime: "08:00", locationType: "home", hospitalId: "", wardRoom: "", serviceAddress: "", notes: "" });
+    setSes({ packageId: defaultPackageId, serviceDate: today, startTime: "08:00", locationType: "home", hospitalId: "", wardNo: "", bedNo: "", serviceAddress: "", notes: "" });
     setSesErr({});
     if (keepCustomer) return setStep(1);
     setCustomer(null);
@@ -188,7 +268,7 @@ export function BookingWizard({
           ))}
         </ol>
         <p className="relative mt-8 text-xs leading-relaxed text-white/85">
-          One session = 24 hours of care · {money(rate)}. The booking goes to the call list for confirmation.
+          Pick a care package (hours and price) in the last step. The booking goes to the call list for confirmation.
         </p>
       </aside>
 
@@ -245,23 +325,43 @@ export function BookingWizard({
             ) : (
               <div className="mt-6 max-w-2xl">
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Full name" required error={custErr.fullName} className="sm:col-span-2">
-                    <Input value={cust.fullName} onChange={(e) => setCust({ ...cust, fullName: e.target.value })} placeholder="Customer's full name" />
-                  </Field>
+                  <NameFields
+                    className="sm:col-span-2"
+                    autoFocus
+                    value={cust}
+                    onChange={(n) => editCust(n)}
+                    errors={custErr}
+                    onBlur={(k) => checkCustField(k)}
+                  />
                   <Field label="Phone number" required error={custErr.phone}>
-                    <Input value={cust.phone} onChange={(e) => setCust({ ...cust, phone: e.target.value })} placeholder="0771234567" />
+                    <Input value={cust.phone} onChange={(e) => editCust({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} onBlur={() => checkCustField("phone")} inputMode="tel" maxLength={16} placeholder="0771234567" />
                   </Field>
                   <Field label="Other phone" error={custErr.altPhone}>
-                    <Input value={cust.altPhone} onChange={(e) => setCust({ ...cust, altPhone: e.target.value })} placeholder="Optional" />
+                    <Input value={cust.altPhone} onChange={(e) => editCust({ altPhone: e.target.value.replace(/[^\d+\s-]/g, "") })} onBlur={() => checkCustField("altPhone")} inputMode="tel" maxLength={16} placeholder="Optional" />
                   </Field>
-                  <Field label="NIC" error={custErr.nic}>
-                    <Input value={cust.nic} onChange={(e) => setCust({ ...cust, nic: e.target.value })} placeholder="199012345678" />
+                  <Field label="Email" error={custErr.email} className="sm:col-span-2">
+                    <Input
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      value={cust.email}
+                      onChange={(e) => editCust({ email: e.target.value.replace(/\s/g, "") })}
+                      onBlur={() => checkCustField("email")}
+                      maxLength={EMAIL_MAX}
+                      placeholder="Optional, e.g. name@gmail.com"
+                    />
+                  </Field>
+                  <Field label="NIC" error={custErr.nic} hint={nicHint}>
+                    <Input value={cust.nic} onChange={(e) => editCust({ nic: e.target.value.toUpperCase().replace(/[^0-9VX]/g, "") })} onBlur={fillFromNic} maxLength={12} placeholder="199012345678 or 901234567V" />
+                  </Field>
+                  <Field label="Date of birth" error={custErr.dob} hint={nicHint ? "Filled from the NIC" : undefined}>
+                    <Input type="date" max={today} min="1900-01-01" value={cust.dob} onChange={(e) => editCust({ dob: e.target.value })} onBlur={() => checkCustField("dob")} />
                   </Field>
                   <Field label="City" error={custErr.city}>
-                    <Input value={cust.city} onChange={(e) => setCust({ ...cust, city: e.target.value })} placeholder="Kadawatha" />
+                    <Input value={cust.city} onChange={(e) => editCust({ city: e.target.value })} onBlur={() => checkCustField("city")} maxLength={80} placeholder="Kadawatha" />
                   </Field>
-                  <Field label="Address" error={custErr.address} className="sm:col-span-2" hint="Used as the care address for home sessions unless the patient has their own.">
-                    <Input value={cust.address} onChange={(e) => setCust({ ...cust, address: e.target.value })} placeholder="House no, street, town" />
+                  <Field label="Address" error={custErr.address} hint="Used as the care address for home sessions unless the patient has their own.">
+                    <Input value={cust.address} onChange={(e) => editCust({ address: e.target.value })} onBlur={() => checkCustField("address")} maxLength={255} placeholder="House no, street, town" />
                   </Field>
                 </div>
                 <div className="mt-8 flex gap-2">
@@ -288,7 +388,7 @@ export function BookingWizard({
                 <ChoiceCard key={p.id} active={patientId === p.id} onClick={() => setPatientId(p.id)}>
                   <div className="font-medium">{p.fullName}</div>
                   <div className="text-xs capitalize text-muted">
-                    {p.relationship === "self" ? "Customer themself" : p.relationship} · {p.gender} · {p.patientNo}
+                    {relationshipLabel(p.relationship, p.relationshipOther)} · {p.gender} · {p.patientNo}
                   </div>
                 </ChoiceCard>
               ))}
@@ -315,7 +415,7 @@ export function BookingWizard({
                         >
                           {pat.gender === g && <span className="h-2.5 w-2.5 rounded-sm bg-accent" />}
                         </span>
-                        <input type="radio" name="gender" className="sr-only" checked={pat.gender === g} onChange={() => setPat({ ...pat, gender: g })} />
+                        <input type="radio" name="gender" className="sr-only" checked={pat.gender === g} onChange={() => editPat({ gender: g })} />
                         {g === "female" ? "Woman" : "Man"}
                       </label>
                     ))}
@@ -323,13 +423,24 @@ export function BookingWizard({
                   {patErr.gender && <p className="mt-1 text-xs text-rose-600">{patErr.gender[0]}</p>}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Patient's full name" required error={patErr.fullName}>
-                    <Input value={pat.fullName} onChange={(e) => setPat({ ...pat, fullName: e.target.value })} placeholder="e.g. Mrs. Lalitha Perera" />
-                  </Field>
+                  <NameFields
+                    className="sm:col-span-2"
+                    value={pat}
+                    onChange={(n) => editPat(n)}
+                    errors={patErr}
+                    onBlur={(k) => {
+                      const e = checkNameParts(pat)[k];
+                      if (e) setPatErr((prev) => ({ ...prev, [k]: [e] }));
+                    }}
+                  />
                   <Field label="Relationship to customer" error={patErr.relationship}>
                     <Select
                       value={pat.relationship}
-                      onChange={(e) => setPat({ ...pat, relationship: e.target.value, fullName: e.target.value === "self" && !pat.fullName ? customer.fullName : pat.fullName })}
+                      onChange={(e) => {
+                        // "Customer themself": copy the customer's names, date of birth and gender (from the NIC)
+                        const self = e.target.value === "self" ? selfPatientValues(customer) : {};
+                        editPat({ relationship: e.target.value, ...self });
+                      }}
                     >
                       {RELATIONSHIPS.map(([v, l]) => (
                         <option key={v} value={v}>
@@ -338,14 +449,29 @@ export function BookingWizard({
                       ))}
                     </Select>
                   </Field>
+                  {pat.relationship === "other" && (
+                    <Field label="Specify relationship" required error={patErr.relationshipOther}>
+                      <Input
+                        autoFocus
+                        value={pat.relationshipOther}
+                        maxLength={RELATIONSHIP_OTHER_MAX}
+                        onChange={(e) => editPat({ relationshipOther: e.target.value })}
+                        onBlur={() => {
+                          const r = checkRelationshipOther(pat.relationshipOther);
+                          if (r) setPatErr((prev) => ({ ...prev, relationshipOther: [r] }));
+                        }}
+                        placeholder="e.g. Grandmother, Neighbour"
+                      />
+                    </Field>
+                  )}
                   <Field label="Date of birth" error={patErr.dob}>
-                    <Input type="date" max={today} value={pat.dob} onChange={(e) => setPat({ ...pat, dob: e.target.value })} />
+                    <Input type="date" max={today} value={pat.dob} onChange={(e) => editPat({ dob: e.target.value })} />
                   </Field>
                   <Field label="Patient's address" error={patErr.address} hint="Leave empty to use the customer's address">
-                    <Input value={pat.address} onChange={(e) => setPat({ ...pat, address: e.target.value })} placeholder={customer.address ?? "Address"} />
+                    <Input value={pat.address} onChange={(e) => editPat({ address: e.target.value })} placeholder={customer.address ?? "Address"} />
                   </Field>
                   <Field label="Care notes" error={patErr.careNotes} className="sm:col-span-2">
-                    <Textarea value={pat.careNotes} onChange={(e) => setPat({ ...pat, careNotes: e.target.value })} placeholder="Condition, mobility, medication times, allergies…" />
+                    <Textarea value={pat.careNotes} onChange={(e) => editPat({ careNotes: e.target.value })} placeholder="Condition, mobility, medication times, allergies…" />
                   </Field>
                 </div>
               </div>
@@ -369,10 +495,36 @@ export function BookingWizard({
             <CustomerChip customer={customer} patient={patient} onChange={() => setStep(1)} changeLabel="Change patient" />
 
             <div className="mt-6 grid max-w-2xl gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <div className="mb-1.5 text-xs font-medium text-ink/80">
+                  Package <span className="text-rose-500">*</span>
+                </div>
+                {packages.length === 0 ? (
+                  <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">No packages are set up yet. Ask the Director to add one under Packages.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {packages.map((p) => (
+                      <ChoiceCard key={p.id} active={ses.packageId === String(p.id)} onClick={() => setSes({ ...ses, packageId: String(p.id) })}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">{p.name}</div>
+                            <div className="text-xs text-muted">{p.description ?? `${p.durationHours}-hour session`}</div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="font-semibold whitespace-nowrap">{money(p.price)}</div>
+                            <div className="text-xs text-muted">{p.durationHours} h</div>
+                          </div>
+                        </div>
+                      </ChoiceCard>
+                    ))}
+                  </div>
+                )}
+                {sesErr.packageId && <p className="mt-1 text-xs text-rose-600">{sesErr.packageId[0]}</p>}
+              </div>
               <Field label="Date" required error={sesErr.serviceDate}>
                 <Input type="date" min={today} value={ses.serviceDate} onChange={(e) => setSes({ ...ses, serviceDate: e.target.value })} />
               </Field>
-              <Field label="Start time" required error={sesErr.startTime} hint="Session runs 24 hours from this time">
+              <Field label="Start time" required error={sesErr.startTime} hint={selectedPackage ? `Session runs ${selectedPackage.durationHours} hours from this time${endsNextDay ? ` (until ${niceTime(endTime)} next day)` : ` (until ${niceTime(endTime)})`}` : undefined}>
                 <Input type="time" value={ses.startTime} onChange={(e) => setSes({ ...ses, startTime: e.target.value })} />
               </Field>
 
@@ -408,9 +560,38 @@ export function BookingWizard({
                       ))}
                     </Select>
                   </Field>
-                  <Field label="Ward / room" error={sesErr.wardRoom}>
-                    <Input value={ses.wardRoom} onChange={(e) => setSes({ ...ses, wardRoom: e.target.value })} placeholder="e.g. Ward 5, Bed 12" />
-                  </Field>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Ward no" required error={sesErr.wardNo}>
+                      <Input
+                        value={ses.wardNo}
+                        maxLength={WARD_MAX}
+                        onChange={(e) => {
+                          setSes({ ...ses, wardNo: e.target.value });
+                          setSesErr((er) => ({ ...er, wardNo: undefined }));
+                        }}
+                        onBlur={() => {
+                          const m = checkWardBed(ses.wardNo, "Ward no");
+                          if (m) setSesErr((er) => ({ ...er, wardNo: [m] }));
+                        }}
+                        placeholder="e.g. 5, 12A, ICU"
+                      />
+                    </Field>
+                    <Field label="Bed no" error={sesErr.bedNo}>
+                      <Input
+                        value={ses.bedNo}
+                        maxLength={BED_MAX}
+                        onChange={(e) => {
+                          setSes({ ...ses, bedNo: e.target.value });
+                          setSesErr((er) => ({ ...er, bedNo: undefined }));
+                        }}
+                        onBlur={() => {
+                          const m = ses.bedNo.trim() ? checkWardBed(ses.bedNo, "Bed no") : null;
+                          if (m) setSesErr((er) => ({ ...er, bedNo: [m] }));
+                        }}
+                        placeholder="Optional, e.g. 12"
+                      />
+                    </Field>
+                  </div>
                 </>
               )}
               <Field label="Notes for the caregiver" error={sesErr.notes} className="sm:col-span-2">
@@ -423,11 +604,11 @@ export function BookingWizard({
                 <div className="font-medium">
                   {niceDate(ses.serviceDate)} · {niceTime(ses.startTime)}
                 </div>
-                <div className="text-xs text-muted">24-hour session · goes to the call list as Pending</div>
+                <div className="text-xs text-muted">{selectedPackage ? `${selectedPackage.name} · ${selectedPackage.durationHours}-hour session` : "No package selected"} · goes to the call list as Pending</div>
               </div>
               <div className="text-right">
-                <div className="text-xs text-muted">Rate</div>
-                <div className="text-lg font-semibold">{money(rate)}</div>
+                <div className="text-xs text-muted">Price</div>
+                <div className="text-lg font-semibold">{selectedPackage ? money(selectedPackage.price) : "—"}</div>
               </div>
             </div>
 
@@ -500,6 +681,13 @@ function ChoiceCard({ active, onClick, children }: { active: boolean; onClick: (
       {children}
     </button>
   );
+}
+
+/** Removes the error of every field whose value actually changed. */
+function dropErrors<T extends object>(errors: Errors, patch: Partial<T>, current: T): Errors {
+  const next = { ...errors };
+  for (const [k, v] of Object.entries(patch)) if (v !== current[k as keyof T]) delete next[k];
+  return next;
 }
 
 /** Drops empty strings so optional fields stay optional. */

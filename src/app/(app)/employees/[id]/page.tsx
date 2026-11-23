@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
+import { nameInitial } from "@/components/app/name-field-defs";
 import { ArrowLeft, CalendarOff, Phone } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -63,13 +64,14 @@ export default async function EmployeePage({ params }: PageProps<"/employees/[id
             title="Edit employee"
             fields={employeeFields(branchList)}
             initial={{
-              fullName: e.fullName,
+              ...nameInitial(e),
               designation: e.designation,
               branchId: String(e.branchId),
               gender: e.gender,
               nic: e.nic ?? "",
               phone: e.phone,
               altPhone: e.altPhone ?? "",
+              email: e.email ?? "",
               dob: e.dob ?? "",
               joinDate: e.joinDate ?? "",
               address: e.address ?? "",
@@ -93,6 +95,15 @@ export default async function EmployeePage({ params }: PageProps<"/employees/[id
                 <Phone size={12} /> {e.phone}
               </a>
               {e.altPhone && ` / ${e.altPhone}`}
+            </Row>
+            <Row label="Email">
+              {e.email ? (
+                <a href={`mailto:${e.email}`} className="hover:text-accent">
+                  {e.email}
+                </a>
+              ) : (
+                "—"
+              )}
             </Row>
             <Row label="NIC">{e.nic ?? "—"}</Row>
             <Row label="Gender">{e.gender === "female" ? "Woman" : "Man"}</Row>

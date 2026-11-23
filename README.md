@@ -47,7 +47,7 @@ npm install
 | Invoices | everyone (managers: view only) | Waiting / printed; white printable invoice, Print / Save PDF, Mark printed |
 | Customers | Director, Call center | Search, profile, patients, recent bookings |
 | Employees | Director edits; others view | Filters by type and branch, leave records, upcoming sessions |
-| Hospitals, Branches, Users, Settings | Director | Master data, logins, company details, session rate |
+| Hospitals, Branches, Users, Packages, Settings | Director | Master data, logins, care packages (hours + price), company details |
 
 Design: light glassmorphism (frosted panels over a soft lavender background); the invoice prints on plain white.
 Screens use **server actions** (`src/app/(app)/_actions/*`) that call the same services as the REST API.
@@ -89,7 +89,7 @@ src/
     errors.ts            AppError + MySQL error -> user message (e.g. double booking)
     sequences.ts         Running numbers: CUS-00001, BK-2026-00001, INV-2026-00001
     dates.ts             today()/tomorrow() in Sri Lanka time
-    settings.ts          Read settings (session_rate = 4500)
+    settings.ts          Read settings (company details for invoices)
     rate-limit.ts        5 wrong passwords per email -> locked 15 minutes
   app/
     (auth)/login/        Login page, form and login/logout actions
@@ -139,3 +139,22 @@ export const createBranch = protectedAction(
 The database is created by `database/care_booking_schema.sql`, and `src/db/schema.ts` mirrors it.
 If you add or change a column, update **both**. Do **not** run `drizzle-kit push` against the real
 database: it would remove the automatic `ON UPDATE` on the `updated_at` columns.
+
+### Migrations (existing databases)
+
+A new install only needs `care_booking_schema.sql`. A database created **before** a change needs
+the matching file in `database/migrations/`, run once, in order:
+
+| File | Change |
+|---|---|
+| `002_split_names.sql` | Employees, customers and patients get `first_name`, `middle_name`, `last_name`. `full_name` becomes a generated column ("first middle last") used for display and search. |
+| `003_customer_dob.sql` | Customers get a date of birth. Fills it (and corrects employees' date of birth and gender) from the NIC, because the app now requires them to match the NIC. |
+| `004_relationship_other.sql` | Patients get `relationship_other`: the real relationship (e.g. Grandmother) when the relationship is "Other". |
+| `005_email.sql` | Optional `email` for customers and employees. |
+| `006_ward_bed.sql` | Hospital bookings: `ward_room` is split into `ward_no` (required) and `bed_no` (optional); old text moves to `ward_no`. |
+| `007_packages.sql` | Care packages. The current session rate becomes the default package "Standard 24 hours"; existing bookings are linked to it; the old session-rate setting is removed. |
+
+```sql
+mysql> SOURCE D:/Niluksha_system/database/migrations/002_split_names.sql;
+```
+Then run `npm run db:check` to confirm the database matches the code.

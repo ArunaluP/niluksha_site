@@ -8,6 +8,12 @@
  *
  * Demo logins created: call@demo.lk / Call@1234, mgr.kdw@demo.lk / Mgr@12345
  */
+/** "W. A. Nimal Fernando" → { firstName: "W.", middleName: "A. Nimal", lastName: "Fernando" } */
+const splitName = (full) => {
+  const p = full.trim().replace(/^(Mr|Mrs|Ms|Miss|Dr|Rev)\.?\s+/i, "").split(/\s+/);
+  return { firstName: p[0], ...(p.length > 2 ? { middleName: p.slice(1, -1).join(" ") } : {}), lastName: p.length > 1 ? p.at(-1) : p[0] };
+};
+
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const ADMIN = { email: process.env.ADMIN_EMAIL ?? "admin@test.lk", password: process.env.ADMIN_PASSWORD ?? "Admin@1234" };
 
@@ -41,6 +47,8 @@ async function main() {
   const mgr = await post("/api/users", { name: "Kasun Perera", email: "mgr.kdw@demo.lk", password: "Mgr@12345", role: "branch_manager", branchId: kdw.id });
   await call("PATCH", `/api/branches/${kdw.id}`, { managerUserId: mgr.id });
 
+  const day12 = await post("/api/packages", { name: "Day shift 12 hours", durationHours: 12, price: 2500, description: "08:00 to 20:00 care" });
+  const night12 = await post("/api/packages", { name: "Night shift 12 hours", durationHours: 12, price: 2800, description: "20:00 to 08:00 care" });
   const h1 = await post("/api/hospitals", { name: "Asiri Central Hospital", type: "private", city: "Colombo 10", phone: "0114665500" });
   const h2 = await post("/api/hospitals", { name: "Gampaha District General", type: "government", city: "Gampaha", phone: "0332222261" });
   await post("/api/hospitals", { name: "Nawaloka Hospital", type: "private", city: "Colombo 2", phone: "0115577111" });
@@ -55,11 +63,11 @@ async function main() {
     [gmp, "Malani Wijesinghe", "female", "Caregiver"],
     [nug, "Ishara Gunasekara", "female", "Caregiver"],
     [nug, "Pradeep Kumara", "male", "Nurse"],
-    [kdw, "Office - Tharushi", "female", "Call Center"],
+    [kdw, "Tharushi Madushani", "female", "Call Center"],
   ];
   const emps = [];
   for (const [i, [b, fullName, gender, designation]] of staff.entries()) {
-    emps.push(await post("/api/employees", { branchId: b.id, fullName, gender, designation, phone: `07${String(10000000 + i * 1234567).slice(0, 8)}`, joinDate: day(-200 + i * 7) }));
+    emps.push(await post("/api/employees", { branchId: b.id, ...splitName(fullName), gender, designation, phone: `077${String(1000000 + i * 1111).padStart(7, "0")}`, joinDate: day(-200 + i * 7) }));
   }
   await post(`/api/employees/${emps[6].id}/leaves`, { fromDate: day(0), toDate: day(2), reason: "Family function" });
 
@@ -73,7 +81,7 @@ async function main() {
   ];
   const cust = [];
   for (const [fullName, phone, address, pats] of people) {
-    cust.push(await post("/api/customers", { fullName, phone, address, city: address.split(", ").at(-1), patients: pats.map(([n, g, r]) => ({ fullName: n, gender: g, relationship: r })) }));
+    cust.push(await post("/api/customers", { ...splitName(fullName), phone, address, city: address.split(", ").at(-1), patients: pats.map(([n, g, r]) => ({ ...splitName(n), gender: g, relationship: r })) }));
   }
 
   // Bookings: today + next 6 days, in different stages
@@ -93,8 +101,9 @@ async function main() {
       patientId: patient.id,
       serviceDate: day(d),
       startTime: times[i % times.length],
+      ...(i % 4 === 1 ? { packageId: day12.id } : i % 4 === 2 ? { packageId: night12.id } : {}), // others: default package
       locationType: loc,
-      ...(loc === "hospital" ? { hospitalId: i % 2 ? h1.id : h2.id, wardRoom: `Ward ${3 + (i % 5)}` } : {}),
+      ...(loc === "hospital" ? { hospitalId: i % 2 ? h1.id : h2.id, wardNo: String(3 + (i % 5)), bedNo: String(10 + i) } : {}),
     });
     if (!stage) continue;
     if (stage === "ignore") {

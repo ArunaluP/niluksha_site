@@ -105,7 +105,7 @@ export function Select({ className, children, ...props }: ComponentProps<"select
 }
 
 export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
-  return <textarea className={cn("field min-h-[84px] resize-y", className)} {...props} />;
+  return <textarea className={cn("field min-h-[84px] resize-none", className)} {...props} />;
 }
 
 // ---------------------------------------------------------------- Badges

@@ -24,6 +24,20 @@ import {
   varchar,
 } from "drizzle-orm/mysql-core";
 
+/**
+ * first / middle / last name, plus full_name which MySQL builds itself
+ * ("first middle last") — read it for display and search, never write it.
+ */
+const personNameColumns = () => ({
+  firstName: varchar("first_name", { length: 60 }).notNull(),
+  middleName: varchar("middle_name", { length: 80 }),
+  lastName: varchar("last_name", { length: 60 }).notNull(),
+  fullName: varchar("full_name", { length: 205 })
+    .notNull()
+    .generatedAlwaysAs(sql`CONCAT_WS(' ', first_name, middle_name, last_name)`, { mode: "stored" }),
+});
+
+
 // ---------------------------------------------------------------------------
 // Shared enums / helpers
 // ---------------------------------------------------------------------------
@@ -100,12 +114,13 @@ export const employees = mysqlTable(
     id: id(),
     empNo: varchar("emp_no", { length: 20 }).notNull(),
     branchId: fk("branch_id").notNull(),
-    fullName: varchar("full_name", { length: 150 }).notNull(),
+    ...personNameColumns(),
     nic: varchar("nic", { length: 12 }),
     gender: mysqlEnum("gender", ["male", "female"]).notNull(),
     dob: date("dob", { mode: "string" }),
     phone: varchar("phone", { length: 20 }).notNull(),
     altPhone: varchar("alt_phone", { length: 20 }),
+    email: varchar("email", { length: 160 }),
     address: varchar("address", { length: 255 }),
     designation: varchar("designation", { length: 60 }).notNull().default("Caregiver"),
     qualifications: text("qualifications"),
@@ -166,10 +181,12 @@ export const customers = mysqlTable(
   {
     id: id(),
     customerNo: varchar("customer_no", { length: 20 }).notNull(),
-    fullName: varchar("full_name", { length: 150 }).notNull(),
+    ...personNameColumns(),
     nic: varchar("nic", { length: 12 }),
+    dob: date("dob", { mode: "string" }),
     phone: varchar("phone", { length: 20 }).notNull(),
     altPhone: varchar("alt_phone", { length: 20 }),
+    email: varchar("email", { length: 160 }),
     address: varchar("address", { length: 255 }),
     city: varchar("city", { length: 80 }),
     notes: text("notes"),
@@ -193,12 +210,13 @@ export const patients = mysqlTable(
     id: id(),
     patientNo: varchar("patient_no", { length: 20 }).notNull(),
     customerId: fk("customer_id").notNull(),
-    fullName: varchar("full_name", { length: 150 }).notNull(),
+    ...personNameColumns(),
     gender: mysqlEnum("gender", ["male", "female"]).notNull(),
     dob: date("dob", { mode: "string" }),
     relationship: mysqlEnum("relationship", ["self", "parent", "spouse", "child", "sibling", "other"])
       .notNull()
       .default("self"),
+    relationshipOther: varchar("relationship_other", { length: 60 }),
     address: varchar("address", { length: 255 }),
     careNotes: text("care_notes"),
     createdAt: createdAt(),
@@ -210,6 +228,25 @@ export const patients = mysqlTable(
 // ---------------------------------------------------------------------------
 // 8. bookings
 // ---------------------------------------------------------------------------
+// 7b. packages (price + hours copied onto each booking)
+// ---------------------------------------------------------------------------
+export const packages = mysqlTable(
+  "packages",
+  {
+    id: id(),
+    name: varchar("name", { length: 80 }).notNull(),
+    durationHours: tinyint("duration_hours", { unsigned: true }).notNull(),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    description: varchar("description", { length: 255 }),
+    isDefault: boolean("is_default").notNull().default(false),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("uq_packages_name").on(t.name)],
+);
+
+// ---------------------------------------------------------------------------
 export const bookings = mysqlTable(
   "bookings",
   {
@@ -219,10 +256,13 @@ export const bookings = mysqlTable(
     patientId: fk("patient_id").notNull(),
     serviceDate: date("service_date", { mode: "string" }).notNull(),
     startTime: time("start_time").notNull().default("08:00:00"),
+    packageId: fk("package_id"),
+    packageName: varchar("package_name", { length: 80 }),
     durationHours: tinyint("duration_hours", { unsigned: true }).notNull().default(24),
     locationType: mysqlEnum("location_type", ["home", "hospital"]).notNull(),
     hospitalId: fk("hospital_id"),
-    wardRoom: varchar("ward_room", { length: 60 }),
+    wardNo: varchar("ward_no", { length: 60 }),
+    bedNo: varchar("bed_no", { length: 30 }),
     serviceAddress: varchar("service_address", { length: 255 }),
     rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
     status: mysqlEnum("status", BOOKING_STATUSES).notNull().default("pending"),
@@ -255,6 +295,7 @@ export const bookings = mysqlTable(
     index("idx_bookings_employee_date").on(t.employeeId, t.serviceDate),
     index("idx_bookings_branch_date").on(t.branchId, t.serviceDate),
     index("idx_bookings_hospital").on(t.hospitalId),
+    index("idx_bookings_package").on(t.packageId),
   ],
 );
 

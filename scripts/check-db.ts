@@ -10,7 +10,7 @@ import * as schema from "../src/db/schema";
 
 const EXPECTED_TABLES = [
   "booking_status_logs", "bookings", "branches", "customers", "employee_leaves", "employees",
-  "hospitals", "invoices", "patients", "sequences", "settings", "users",
+  "hospitals", "invoices", "packages", "patients", "sequences", "settings", "users",
 ];
 
 async function main() {
@@ -92,7 +92,8 @@ async function compareWithDrizzle(conn: mysql.Connection) {
       const have = normalize(dbCol.type);
       if (want !== have) problems.push(`${cfg.name}.${col.name}: type is ${have}, schema.ts expects ${want}`);
       const dbNotNull = dbCol.nullable === "NO";
-      if (dbNotNull !== col.notNull) {
+      // Generated columns (full_name, busy_employee_id) are filled by MySQL itself, so NULL-ability doesn't matter.
+      if (!col.generated && dbNotNull !== col.notNull) {
         problems.push(`${cfg.name}.${col.name}: database is ${dbNotNull ? "NOT NULL" : "NULL"}, schema.ts expects ${col.notNull ? "NOT NULL" : "NULL"}`);
       }
     }

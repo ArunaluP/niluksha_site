@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { updateSettingsAction } from "@/app/(app)/_actions/records";
 import { Button, Field, Input } from "@/components/ui";
 
-type S = { company_name: string; company_address: string; company_phone: string; session_rate: string };
+type S = { company_name: string; company_address: string; company_phone: string };
 
 export function SettingsForm({ initial }: { initial: S }) {
   const [v, setV] = useState(initial);
@@ -39,9 +39,6 @@ export function SettingsForm({ initial }: { initial: S }) {
       </Field>
       <Field label="Phone (on invoices)" error={err.company_phone}>
         <Input value={v.company_phone} onChange={(e) => setV({ ...v, company_phone: e.target.value })} />
-      </Field>
-      <Field label="Session rate (Rs., per 24 hours)" error={err.session_rate}>
-        <Input type="number" min="1" step="0.01" value={v.session_rate} onChange={(e) => setV({ ...v, session_rate: e.target.value })} />
       </Field>
       <div className="sm:col-span-2">
         <Button type="submit" disabled={pending}>

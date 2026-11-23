@@ -54,6 +54,7 @@ const UNIQUE_KEY_MESSAGES: Record<string, string> = {
   uq_employees_nic: "An employee with this NIC is already registered.",
   uq_hospitals_name_city: "This hospital is already registered in that city.",
   uq_invoices_booking: "An invoice already exists for this booking.",
+  uq_packages_name: "A package with this name already exists.",
 };
 
 function findMySqlError(err: unknown): MySqlError | null {

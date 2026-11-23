@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { ActionResult } from "@/lib/action";
 import { Button, cn, Field, Input, Select, Textarea, type ButtonVariant } from "@/components/ui";
 import { Dialog } from "@/components/ui/client";
+import { parseNic } from "@/lib/lk-rules";
 
 export type FieldDef = {
   name: string;
@@ -16,13 +17,22 @@ export type FieldDef = {
   required?: boolean;
   placeholder?: string;
   hint?: string;
-  full?: boolean; // span both columns
+  full?: boolean; // span the whole row
+  third?: boolean; // one third of the row (e.g. first / middle / last name)
   numeric?: boolean; // send as number (ids)
+  maxLength?: number;
+  /** NIC box: leaving it fills Date of birth (and Gender, if the form has them) from the NIC. */
+  nic?: boolean;
+  /** Only show (and send) this field while another field has a given value, e.g. relationship = "other". */
+  showWhen?: { field: string; value: string };
   createOnly?: boolean;
   editOnly?: boolean;
 };
 
 type Values = Record<string, string | boolean>;
+
+/** 6-column grid: half row by default, full row, or a third. */
+const span = (f: FieldDef) => (f.full ? "sm:col-span-6" : f.third ? "sm:col-span-2" : "sm:col-span-3");
 
 /**
  * A button that opens a glass dialog with a form, built from a list of fields,
@@ -45,6 +55,7 @@ export function EntityFormButton<R>({
   wide,
   onSaved,
   icon,
+  autoFill,
 }: {
   title: string;
   subtitle?: string;
@@ -60,6 +71,8 @@ export function EntityFormButton<R>({
   wide?: boolean;
   onSaved?: (data: R) => void;
   icon?: ReactNode;
+  /** When `field` is set to `value`, copy `values` into the form (e.g. relationship "self" → the customer's details). */
+  autoFill?: { field: string; value: string; values: Values };
 }) {
   const visible = fields.filter((f) => (mode === "create" ? !f.editOnly : !f.createOnly));
   const start = () => Object.fromEntries(visible.map((f) => [f.name, initial?.[f.name] ?? (f.type === "checkbox" ? false : "")])) as Values;
@@ -68,11 +81,21 @@ export function EntityFormButton<R>({
   const [values, setValues] = useState<Values>(start);
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>({});
   const [pending, startT] = useTransition();
+  const shown = visible.filter((f) => !f.showWhen || values[f.showWhen.field] === f.showWhen.value);
   const router = useRouter();
+
+  /** A valid NIC replaces the date of birth and gender with what the NIC says. */
+  function fillFromNic(raw: string) {
+    const n = raw.trim() ? parseNic(raw) : null;
+    if (!n || "error" in n) return;
+    const has = (name: string) => visible.some((f) => f.name === name);
+    setValues((s) => ({ ...s, ...(has("dob") ? { dob: n.dob } : {}), ...(has("gender") ? { gender: n.gender } : {}) }));
+    setErrors((e) => ({ ...e, nic: undefined, dob: undefined, gender: undefined }));
+  }
 
   function submit() {
     const payload: Record<string, unknown> = { ...extra };
-    for (const f of visible) {
+    for (const f of shown) {
       const v = values[f.name];
       if (typeof v === "boolean") payload[f.name] = v;
       else if (v === "") {
@@ -108,25 +131,35 @@ export function EntityFormButton<R>({
       </Button>
       <Dialog open={open} onClose={() => setOpen(false)} title={title} subtitle={subtitle} wide={wide}>
         <form
+          noValidate // our own checks show the messages, not the browser's pop-ups
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
-          <div className="grid gap-4 sm:grid-cols-2">
-            {visible.map((f) => {
+          <div className="grid gap-4 sm:grid-cols-6">
+            {shown.map((f) => {
               const v = values[f.name];
-              const set = (nv: string | boolean) => setValues((s) => ({ ...s, [f.name]: nv }));
+              const set = (nv: string | boolean) => {
+                const fill = autoFill && autoFill.field === f.name && nv === autoFill.value ? autoFill.values : {};
+                setValues((s) => ({ ...s, ...fill, [f.name]: nv }));
+                if (Object.keys(fill).length) setErrors((e) => ({ ...e, ...Object.fromEntries(Object.keys(fill).map((k) => [k, undefined])) }));
+              };
               if (f.type === "checkbox") {
                 return (
-                  <label key={f.name} className={cn("flex items-center gap-2.5 text-sm", f.full && "sm:col-span-2")}>
-                    <input type="checkbox" checked={Boolean(v)} onChange={(e) => set(e.target.checked)} className="h-4 w-4 accent-[#6658f5]" />
+                  <label key={f.name} className={cn("flex items-center gap-2.5 text-sm", span(f))}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(v)}
+                      onChange={(e) => set(e.target.checked)}
+                      className="h-4 w-4 accent-[#6658f5]"
+                    />
                     {f.label}
                   </label>
                 );
               }
               return (
-                <Field key={f.name} label={f.label} required={f.required} error={errors[f.name]} hint={f.hint} className={cn(f.full && "sm:col-span-2")}>
+                <Field key={f.name} label={f.label} required={f.required} error={errors[f.name]} hint={f.hint} className={span(f)}>
                   {f.type === "textarea" ? (
                     <Textarea value={String(v)} onChange={(e) => set(e.target.value)} placeholder={f.placeholder} />
                   ) : f.type === "select" ? (
@@ -143,7 +176,12 @@ export function EntityFormButton<R>({
                     <div className="flex gap-5 pt-1">
                       {f.options?.map((o) => (
                         <label key={o.value} className="flex cursor-pointer items-center gap-2 text-sm">
-                          <span className={cn("flex h-5 w-5 items-center justify-center rounded-md border-2", v === o.value ? "border-accent bg-accent-soft" : "border-[#c7cbee] bg-white/70")}>
+                          <span
+                            className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded-md border-2",
+                              v === o.value ? "border-accent bg-accent-soft" : "border-[#c7cbee] bg-white/70",
+                            )}
+                          >
                             {v === o.value && <span className="h-2.5 w-2.5 rounded-sm bg-accent" />}
                           </span>
                           <input type="radio" className="sr-only" checked={v === o.value} onChange={() => set(o.value)} />
@@ -152,7 +190,15 @@ export function EntityFormButton<R>({
                       ))}
                     </div>
                   ) : (
-                    <Input type={f.type ?? "text"} value={String(v)} onChange={(e) => set(e.target.value)} placeholder={f.placeholder} autoComplete={f.type === "password" ? "new-password" : undefined} />
+                    <Input
+                      type={f.type ?? "text"}
+                      value={String(v)}
+                      onChange={(e) => set(f.nic ? e.target.value.toUpperCase().replace(/[^0-9VX]/g, "") : e.target.value)}
+                      onBlur={f.nic ? () => fillFromNic(String(v)) : undefined}
+                      placeholder={f.placeholder}
+                      maxLength={f.nic ? 12 : f.maxLength}
+                      autoComplete={f.type === "password" ? "new-password" : undefined}
+                    />
                   )}
                 </Field>
               );

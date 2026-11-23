@@ -72,11 +72,11 @@ Only **Caregivers and Nurses** appear as free employees and can be assigned to p
 | Method | URL | Body / query | Step |
 |---|---|---|---|
 | GET | `/api/customers?q=0771234567` | q = phone, NIC, name or CUS no | Find caller |
-| POST | `/api/customers` | `{ fullName, phone, nic?, altPhone?, address?, city?, notes?, patients?: [{ fullName, gender, relationship?, dob?, address?, careNotes? }] }` | New customer |
+| POST | `/api/customers` | `{ firstName, middleName?, lastName, phone, nic?, altPhone?, email?, address?, city?, notes?, patients?: [{ firstName, middleName?, lastName, gender, relationship?, relationshipOther?, dob?, address?, careNotes? }] }` | New customer |
 | GET | `/api/customers/:id` | – | Profile + patients + recent bookings |
-| POST | `/api/customers/:id/patients` | `{ fullName, gender, relationship?, dob?, address?, careNotes? }` | Add patient |
-| POST | `/api/bookings` | `{ customerId, patientId, serviceDate, startTime?, locationType: "home"\|"hospital", hospitalId?, wardRoom?, serviceAddress?, notes? }` | Record booking |
-| PATCH | `/api/bookings/:id` | any of `patientId, serviceDate, startTime, locationType, hospitalId, wardRoom, serviceAddress, notes` | Edit (pending/confirmed) |
+| POST | `/api/customers/:id/patients` | `{ firstName, middleName?, lastName, gender, relationship?, relationshipOther?, dob?, address?, careNotes? }` | Add patient |
+| POST | `/api/bookings` | `{ customerId, patientId, serviceDate, startTime?, packageId?, locationType: "home"\|"hospital", hospitalId?, wardNo?, bedNo?, serviceAddress?, notes? }` | Record booking |
+| PATCH | `/api/bookings/:id` | any of `patientId, serviceDate, startTime, packageId, locationType, hospitalId, wardNo, bedNo, serviceAddress, notes` | Edit (pending/confirmed) |
 | GET | `/api/call-list?day=today\|tomorrow&date=&view=pending\|done\|all` | – | Daily call list + counts |
 | POST | `/api/bookings/:id/confirm` | `{ note? }` | Customer confirmed |
 | POST | `/api/bookings/:id/ignore` | `{ note? }` | Customer declined / cancelled |
@@ -106,20 +106,20 @@ Only **Caregivers and Nurses** appear as free employees and can be assigned to p
 | GET / PATCH | `/api/users/:id` | `{ name?, email?, password?, role?, branchId?, isActive? }` |
 | GET / POST | `/api/hospitals?type=&search=&active=` | `{ name, type: "private"\|"government", address?, city?, phone? }` |
 | GET / PATCH | `/api/hospitals/:id` | same fields + `isActive` |
-| GET / POST | `/api/employees?branchId=&status=&designation=&search=` | `{ branchId, fullName, gender, phone, designation?: "Caregiver"\|"Nurse"\|"Branch Manager"\|"Call Center"\|"Manager", nic?, dob?, altPhone?, address?, qualifications?, joinDate? }` |
+| GET / POST | `/api/employees?branchId=&status=&designation=&search=` | `{ branchId, firstName, middleName?, lastName, gender, phone, designation?: "Caregiver"\|"Nurse"\|"Branch Manager"\|"Call Center"\|"Manager", nic?, dob?, altPhone?, email?, address?, qualifications?, joinDate? }` |
 | GET / PATCH | `/api/employees/:id` | same fields + `status: "active"\|"inactive"` |
 | GET / POST | `/api/employees/:id/leaves` | `{ fromDate, toDate, reason? }` |
 | DELETE | `/api/leaves/:id` | – |
 | GET / PATCH | `/api/patients/:id` | patient fields |
 | PATCH | `/api/customers/:id` | customer fields |
-| GET / PATCH | `/api/settings` | `{ session_rate?, company_name?, company_address?, company_phone? }` |
+| GET / PATCH | `/api/settings` | `{ company_name?, company_address?, company_phone? }` |
 
 ## Example: one booking end to end
 
 ```http
 POST /api/auth/login            {"email":"admin@company.lk","password":"Admin@1234"}
-POST /api/customers             {"fullName":"Ruwan Jayasinghe","phone":"0771234567","address":"12 Temple Rd",
-                                 "patients":[{"fullName":"Mrs. Jayasinghe","gender":"female","relationship":"parent"}]}
+POST /api/customers             {"firstName":"Ruwan","lastName":"Jayasinghe","phone":"0771234567","address":"12 Temple Rd",
+                                 "patients":[{"firstName":"Lalitha","lastName":"Jayasinghe","gender":"female","relationship":"parent"}]}
 POST /api/bookings              {"customerId":1,"patientId":1,"serviceDate":"2026-11-20","locationType":"home"}
 GET  /api/call-list?day=today
 POST /api/bookings/1/confirm    {"note":"Confirmed by phone"}
@@ -139,3 +139,22 @@ Run it only against an **empty test database** with one admin (`admin@test.lk` /
 npm run dev                 # terminal 1
 npm run test:api            # terminal 2
 ```
+
+### Patient relationship
+`relationship` is one of `self`, `parent`, `spouse`, `child`, `sibling`, `other`.
+With `other`, `relationshipOther` (the real relationship, e.g. `"Grandmother"`) is required; with any other value it is cleared.
+
+### Hospital bookings
+With `locationType: "hospital"`: `hospitalId` and `wardNo` are required, `bedNo` is optional
+(letters, numbers, spaces and `. / # -`, e.g. `"12A"`, `"ICU"`). Home bookings clear both.
+
+### Packages (Director)
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| GET | `/api/packages?active=true` | | Everyone who can book |
+| POST | `/api/packages` | `{ name, durationHours (1–24), price, description?, isDefault? }` | Director |
+| GET / PATCH | `/api/packages/:id` | any of `name, durationHours, price, description, isDefault, isActive` | Director |
+
+A booking copies the package's name, hours and price (`packageName`, `durationHours`, `rate`), so editing a
+package never changes existing bookings or invoices. Leave `packageId` out to use the default package.
+Exactly one package is the default; it can't be made inactive.

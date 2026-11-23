@@ -17,19 +17,20 @@ import {
 } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
 import { addDays, today } from "@/lib/dates";
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
+import { AppError, ValidationError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { branchScope, canAccessBranch } from "@/lib/permissions";
 import { nextNumber } from "@/lib/sequences";
-import { getSessionRate } from "@/lib/settings";
-import { id, isoDate, nullableText, optText, pageParams, pagination, time, type Paged } from "@/lib/validation";
+import { id, isoDate, nullableBedNo, nullableText, nullableWardNo, optBedNo, optText, optWardNo, pageParams, pagination, time, type Paged } from "@/lib/validation";
 import { assertEmployeeCanWork, listAvailableEmployees } from "../employees/service";
+import { packageForBooking } from "../packages/service";
 import { applyTransition, lockBooking } from "./status";
 
 // ======================================================================= schemas
 const locationFields = {
   locationType: z.enum(["home", "hospital"], { error: "Location must be home or hospital." }),
   hospitalId: id.nullable().optional(),
-  wardRoom: optText(60),
+  wardNo: optWardNo,
+  bedNo: optBedNo,
   serviceAddress: optText(255),
 };
 
@@ -39,6 +40,8 @@ export const BookingCreateSchema = z
     patientId: id,
     serviceDate: isoDate,
     startTime: time.optional(),
+    /** Leave out to use the default package. */
+    packageId: id.optional(),
     ...locationFields,
     notes: optText(2000),
   })
@@ -51,9 +54,11 @@ export const BookingUpdateSchema = z.object({
   patientId: id.optional(),
   serviceDate: isoDate.optional(),
   startTime: time.optional(),
+  packageId: id.optional(),
   locationType: locationFields.locationType.optional(),
   hospitalId: id.nullable().optional(),
-  wardRoom: nullableText(60),
+  wardNo: nullableWardNo,
+  bedNo: nullableBedNo,
   serviceAddress: nullableText(255),
   notes: nullableText(2000),
 });
@@ -90,6 +95,8 @@ const listColumns = {
   bookingNo: bookings.bookingNo,
   serviceDate: bookings.serviceDate,
   startTime: bookings.startTime,
+  packageId: bookings.packageId,
+  packageName: bookings.packageName,
   durationHours: bookings.durationHours,
   status: bookings.status,
   rate: bookings.rate,
@@ -97,7 +104,8 @@ const listColumns = {
   hospitalId: bookings.hospitalId,
   hospitalName: hospitals.name,
   hospitalType: hospitals.type,
-  wardRoom: bookings.wardRoom,
+  wardNo: bookings.wardNo,
+  bedNo: bookings.bedNo,
   serviceAddress: bookings.serviceAddress,
   customerId: bookings.customerId,
   customerNo: customers.customerNo,
@@ -228,6 +236,18 @@ async function checkLocation(
   return { hospitalId: null, serviceAddress: address };
 }
 
+/** Name, hours and price are copied from the package onto the booking. */
+function fromPackage(p: { id: number; name: string; durationHours: number; price: string }) {
+  return { packageId: p.id, packageName: p.name, durationHours: p.durationHours, rate: p.price };
+}
+
+/** Hospital: ward no required, bed no optional. Home care: both cleared. */
+function hospitalBed(locationType: "home" | "hospital", wardNo?: string | null, bedNo?: string | null) {
+  if (locationType !== "hospital") return { wardNo: null, bedNo: null };
+  if (!wardNo) throw new ValidationError({ wardNo: ["Ward no is required for a hospital booking."] });
+  return { wardNo, bedNo: bedNo ?? null };
+}
+
 function checkDate(date: string) {
   if (date < today()) throw new AppError(`The service date can't be in the past (today is ${today()}).`);
 }
@@ -249,7 +269,7 @@ export async function createBooking(input: z.infer<typeof BookingCreateSchema>, 
   if (!customer) throw new AppError("Customer not found.");
   const patient = await getPatientOfCustomer(input.patientId, input.customerId);
   const location = await checkLocation(input, patient.address ?? patient.customerAddress);
-  const rate = await getSessionRate();
+  const pkg = await packageForBooking(input.packageId);
 
   const bookingId = await db.transaction(async (tx) => {
     const bookingNo = await nextNumber(tx, "booking");
@@ -260,9 +280,9 @@ export async function createBooking(input: z.infer<typeof BookingCreateSchema>, 
       serviceDate: input.serviceDate,
       startTime: input.startTime ?? "08:00:00",
       locationType: input.locationType,
-      wardRoom: input.locationType === "hospital" ? (input.wardRoom ?? null) : null,
+      ...hospitalBed(input.locationType, input.wardNo, input.bedNo),
       ...location,
-      rate,
+      ...fromPackage(pkg),
       notes: input.notes ?? null,
       createdBy: user.id,
     });
@@ -289,9 +309,10 @@ export async function updateBooking(bookingId: number, input: z.infer<typeof Boo
   if (input.serviceDate) set.serviceDate = input.serviceDate;
   if (input.startTime) set.startTime = input.startTime;
   if (input.notes !== undefined) set.notes = input.notes;
+  if (input.packageId && input.packageId !== current.packageId) Object.assign(set, fromPackage(await packageForBooking(input.packageId)));
 
   const touchesLocation =
-    input.locationType !== undefined || input.hospitalId !== undefined || input.serviceAddress !== undefined || input.wardRoom !== undefined;
+    input.locationType !== undefined || input.hospitalId !== undefined || input.serviceAddress !== undefined || input.wardNo !== undefined || input.bedNo !== undefined;
   if (touchesLocation) {
     const locationType = input.locationType ?? current.locationType;
     const loc = await checkLocation(
@@ -304,7 +325,11 @@ export async function updateBooking(bookingId: number, input: z.infer<typeof Boo
     );
     Object.assign(set, loc, {
       locationType,
-      wardRoom: locationType === "hospital" ? (input.wardRoom !== undefined ? input.wardRoom : current.wardRoom) : null,
+      ...hospitalBed(
+        locationType,
+        input.wardNo !== undefined ? input.wardNo : current.wardNo,
+        input.bedNo !== undefined ? input.bedNo : current.bedNo,
+      ),
     });
   }
   if (Object.keys(set).length) await db.update(bookings).set(set).where(eq(bookings.id, bookingId));

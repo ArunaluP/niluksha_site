@@ -90,6 +90,10 @@
     {
       "key": "invoiceId",
       "value": ""
+    },
+    {
+      "key": "packageId",
+      "value": ""
     }
   ],
   "item": [
@@ -740,7 +744,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"branchId\": \"{{branchId}}\",\n  \"fullName\": \"Nimali Perera\",\n  \"gender\": \"female\",\n  \"phone\": \"0711111111\",\n  \"nic\": \"199012345678\",\n  \"designation\": \"Caregiver\",\n  \"joinDate\": \"{{today}}\"\n}",
+              "raw": "{\n  \"branchId\": \"{{branchId}}\",\n  \"firstName\": \"Nimali\",\n  \"lastName\": \"Perera\",\n  \"gender\": \"female\",\n  \"phone\": \"0711111111\",\n  \"nic\": \"199062345678\",\n  \"designation\": \"Caregiver\",\n  \"joinDate\": \"{{today}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -785,7 +789,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"branchId\": \"{{branchId}}\",\n  \"fullName\": \"Kumari Silva\",\n  \"gender\": \"female\",\n  \"phone\": \"0722222222\"\n}",
+              "raw": "{\n  \"branchId\": \"{{branchId}}\",\n  \"firstName\": \"Kumari\",\n  \"lastName\": \"Silva\",\n  \"gender\": \"female\",\n  \"phone\": \"0722222222\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1067,6 +1071,132 @@
           ]
         },
         {
+          "name": "Create package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/packages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "packages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Night shift 12 hours\",\n  \"durationHours\": 12,\n  \"price\": 2800,\n  \"description\": \"20:00 to 08:00 care\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));",
+                  "if (res.ok) pm.collectionVariables.set('packageId', res.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List packages (active)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/packages?active=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "packages"
+              ],
+              "query": [
+                {
+                  "key": "active",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update package",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/packages/{{packageId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "packages",
+                "{{packageId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 3000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let res = {};",
+                  "try { res = pm.response.json(); } catch (e) { res = { ok: false, error: 'Response is not JSON (check the URL / ids)' }; }",
+                  "pm.test(pm.request.method + ' ' + pm.response.code, () => pm.expect(res.ok, res.error).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Get settings",
           "request": {
             "method": "GET",
@@ -1172,7 +1302,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Ruwan Jayasinghe\",\n  \"phone\": \"0771234567\",\n  \"nic\": \"198512345678\",\n  \"address\": \"12 Temple Rd, Kadawatha\",\n  \"city\": \"Kadawatha\",\n  \"patients\": [\n    {\n      \"fullName\": \"Mrs. Jayasinghe\",\n      \"gender\": \"female\",\n      \"relationship\": \"parent\",\n      \"careNotes\": \"Diabetic, needs help walking\"\n    }\n  ]\n}",
+              "raw": "{\n  \"firstName\": \"Ruwan\",\n  \"lastName\": \"Jayasinghe\",\n  \"phone\": \"0771234567\",\n  \"nic\": \"198512345678\",\n  \"address\": \"12 Temple Rd, Kadawatha\",\n  \"city\": \"Kadawatha\",\n  \"patients\": [\n    {\n      \"firstName\": \"Lalitha\",\n      \"lastName\": \"Jayasinghe\",\n      \"gender\": \"female\",\n      \"relationship\": \"parent\",\n      \"careNotes\": \"Diabetic, needs help walking\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1297,7 +1427,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Mr. Jayasinghe\",\n  \"gender\": \"male\",\n  \"relationship\": \"parent\"\n}",
+              "raw": "{\n  \"firstName\": \"Somapala\",\n  \"lastName\": \"Jayasinghe\",\n  \"gender\": \"male\",\n  \"relationship\": \"parent\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1387,7 +1517,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"patientId\": \"{{patient2Id}}\",\n  \"serviceDate\": \"{{tomorrow}}\",\n  \"startTime\": \"19:00\",\n  \"locationType\": \"hospital\",\n  \"hospitalId\": \"{{hospitalId}}\",\n  \"wardRoom\": \"Ward 5, Bed 12\"\n}",
+              "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"patientId\": \"{{patient2Id}}\",\n  \"serviceDate\": \"{{tomorrow}}\",\n  \"startTime\": \"19:00\",\n  \"locationType\": \"hospital\",\n  \"hospitalId\": \"{{hospitalId}}\",\n  \"wardNo\": \"5\",\n  \"bedNo\": \"12\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   manageBranches: ["admin"],
   manageHospitals: ["admin"],
   manageSettings: ["admin"],
+  managePackages: ["admin"], // create / edit care packages: Director only
+  viewPackages: ["admin", "call_center", "branch_manager"],
   viewMasterData: ["admin", "call_center", "branch_manager"],
   manageEmployees: ["admin"], // employees + leave: Director only
   manageCustomers: ["admin", "call_center"],

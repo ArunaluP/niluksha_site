@@ -1,4 +1,5 @@
 import { Home, Hospital, UserCheck } from "lucide-react";
+import { hospitalPlace } from "@/lib/lk-rules";
 import Link from "next/link";
 import { Tabs } from "@/components/app/list-tools";
 import { AssignButton } from "@/components/app/booking-actions";
@@ -22,7 +23,8 @@ type Row = {
   patientName: string;
   locationType: string;
   hospitalName: string | null;
-  wardRoom: string | null;
+  wardNo: string | null;
+  bedNo: string | null;
   serviceAddress: string | null;
   employeeId: number | null;
   employeeName: string | null;
@@ -97,7 +99,7 @@ export default async function AssignmentsPage({ searchParams }: PageProps<"/assi
                     <Td className="min-w-[200px] text-xs">
                       <div className="flex items-start gap-1.5">
                         {b.locationType === "hospital" ? <Hospital size={14} className="mt-0.5 text-accent" /> : <Home size={14} className="mt-0.5 text-accent" />}
-                        {b.locationType === "hospital" ? `${b.hospitalName}${b.wardRoom ? ` · ${b.wardRoom}` : ""}` : b.serviceAddress}
+                        {b.locationType === "hospital" ? hospitalPlace(b.hospitalName, b.wardNo, b.bedNo) : b.serviceAddress}
                       </div>
                     </Td>
                     <Td>

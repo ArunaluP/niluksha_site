@@ -5,12 +5,11 @@ import { db } from "@/db";
 import { settings } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
 import { getSettings } from "@/lib/settings";
-import { money, optText } from "@/lib/validation";
+import { optText } from "@/lib/validation";
 
-/** Only these keys can be changed through the API. */
+/** Only these keys can be changed through the API. (Prices live in Packages.) */
 export const SettingsUpdateSchema = z
   .object({
-    session_rate: money.optional(),
     company_name: optText(255),
     company_address: optText(255),
     company_phone: optText(255),

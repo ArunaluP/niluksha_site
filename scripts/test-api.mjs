@@ -125,14 +125,17 @@ async function main() {
   check("filter returns 1 government hospital", hl?.length === 1);
 
   section("Employees + leave");
-  const e1 = expect("Create employee 1 (KDW)", await admin.post("/api/employees", { branchId: kdw.id, fullName: "Nimali Perera", gender: "female", phone: "0711111111", nic: "199012345678" }), 201);
+  const e1 = expect("Create employee 1 (KDW)", await admin.post("/api/employees", { branchId: kdw.id, firstName: "Nimali", lastName: "Perera", gender: "female", phone: "0711111111", nic: "199062345678" }), 201);
+  check("employee DOB filled from NIC", e1?.dob === "1990-05-02", e1?.dob);
   check("employee number generated", /^EMP-\d{4}$/.test(e1?.empNo ?? ""), e1?.empNo);
-  const e2 = expect("Create employee 2 (KDW)", await admin.post("/api/employees", { branchId: kdw.id, fullName: "Kumari Silva", gender: "female", phone: "0722222222" }), 201);
-  const e3 = expect("Create employee 3 (GMP)", await admin.post("/api/employees", { branchId: gmp.id, fullName: "Sunil Fernando", gender: "male", phone: "0733333333" }), 201);
-  const office = expect("Create office staff (Call Center type, GMP)", await admin.post("/api/employees", { branchId: gmp.id, fullName: "Office Staff", gender: "female", phone: "0744444444", designation: "Call Center" }), 201);
-  expect("Invalid employee type", await admin.post("/api/employees", { branchId: kdw.id, fullName: "X", gender: "male", phone: "0711111113", designation: "Driver" }), 400);
-  expect("Invalid NIC", await admin.post("/api/employees", { branchId: kdw.id, fullName: "X", gender: "male", phone: "0711111112", nic: "123" }), 400);
-  expect("Duplicate NIC", await admin.post("/api/employees", { branchId: kdw.id, fullName: "X", gender: "male", phone: "0711111112", nic: "199012345678" }), 409);
+  const e2 = expect("Create employee 2 (KDW)", await admin.post("/api/employees", { branchId: kdw.id, firstName: "Kumari", lastName: "Silva", gender: "female", phone: "0722222222" }), 201);
+  const e3 = expect("Create employee 3 (GMP)", await admin.post("/api/employees", { branchId: gmp.id, firstName: "Sunil", lastName: "Fernando", gender: "male", phone: "0753333333" }), 201);
+  const office = expect("Create office staff (Call Center type, GMP)", await admin.post("/api/employees", { branchId: gmp.id, firstName: "Office", lastName: "Staff", gender: "female", phone: "0744444444", designation: "Call Center" }), 201);
+  expect("Invalid employee type", await admin.post("/api/employees", { branchId: kdw.id, firstName: "X", lastName: "Test", gender: "male", phone: "0711111113", designation: "Driver" }), 400);
+  expect("Invalid NIC", await admin.post("/api/employees", { branchId: kdw.id, firstName: "X", lastName: "Test", gender: "male", phone: "0711111112", nic: "123" }), 400);
+  expect("Duplicate NIC", await admin.post("/api/employees", { branchId: kdw.id, firstName: "X", lastName: "Test", gender: "female", phone: "0711111112", nic: "199062345678" }), 409);
+  expect("Gender must match NIC", await admin.post("/api/employees", { branchId: kdw.id, firstName: "X", lastName: "Test", gender: "male", phone: "0711111114", nic: "198570300014" }), 400);
+  expect("DOB must match NIC (update)", await admin.patch(`/api/employees/${e1.id}`, { dob: "1990-05-03" }), 400);
   expect("Leave: to before from", await admin.post(`/api/employees/${e3.id}/leaves`, { fromDate: TOMORROW, toDate: TODAY }), 400);
   const leave = expect("Add leave for employee 3 tomorrow", await admin.post(`/api/employees/${e3.id}/leaves`, { fromDate: TOMORROW, toDate: TOMORROW, reason: "Personal" }), 201);
   const ed = expect("Employee detail with leaves", await admin.get(`/api/employees/${e3.id}`), 200);
@@ -142,26 +145,44 @@ async function main() {
 
   section("Settings");
   const st = expect("Get settings", await admin.get("/api/settings"), 200);
-  check("session_rate is 4500.00", st?.session_rate === "4500.00", st);
+  check("no session_rate setting any more (prices live in packages)", st && st.session_rate === undefined, st);
   expect("Unknown setting key rejected", await admin.patch("/api/settings", { invoice_prefix: "X" }), 400);
   const st2 = expect("Update company name", await admin.patch("/api/settings", { company_name: "Niluksha Care Services" }), 200);
   check("company name saved", st2?.company_name === "Niluksha Care Services");
+
+  section("Packages");
+  const pk = expect("List packages", await admin.get("/api/packages"), 200);
+  const std = pk?.find?.((p) => p.isDefault);
+  check("default package is Standard 24 hours / 4500.00", std?.name === "Standard 24 hours" && std?.price === "4500.00" && std?.durationHours === 24, std);
+  const night = expect("Create 12-hour package", await admin.post("/api/packages", { name: "Night 12 hours", durationHours: 12, price: 2500 }), 201);
+  check("price stored 2500.00", night?.price === "2500.00", night?.price);
+  expect("Package over 24 hours rejected", await admin.post("/api/packages", { name: "Two days", durationHours: 48, price: 9000 }), 400);
+  expect("Duplicate package name", await admin.post("/api/packages", { name: "Night 12 hours", durationHours: 10, price: 2000 }), 409);
+  expect("Default package can't be made inactive", await admin.patch(`/api/packages/${std.id}`, { isActive: false }), 400);
+  const nightDef = expect("Make Night the default", await admin.patch(`/api/packages/${night.id}`, { isDefault: true }), 200);
+  check("night is default", nightDef?.isDefault === true);
+  const stdNow = expect("Get standard", await admin.get(`/api/packages/${std.id}`), 200);
+  check("standard no longer default", stdNow?.isDefault === false);
+  expect("Make Standard default again", await admin.patch(`/api/packages/${std.id}`, { isDefault: true }), 200);
 
   section("Call-center login + permissions");
   expect("Call center login", await call.login("call@test.lk", "Call@1234"), 200);
   expect("Call center can't create branch", await call.post("/api/branches", { code: "X1", name: "X" }), 403);
   expect("Call center can't list users", await call.get("/api/users"), 403);
 
+  expect("Call center can see packages", await call.get("/api/packages?active=true"), 200);
+  expect("Call center can't create packages", await call.post("/api/packages", { name: "X", durationHours: 5, price: 100 }), 403);
+
   section("Customers + patients");
   const cust = expect(
     "Create customer with 2 patients",
     await call.post("/api/customers", {
-      fullName: "Ruwan Jayasinghe",
+      firstName: "Ruwan", lastName: "Jayasinghe",
       phone: "0771234567",
       address: "12 Temple Rd, Kadawatha",
       patients: [
-        { fullName: "Mrs. Jayasinghe", gender: "female", relationship: "parent" },
-        { fullName: "Ruwan Jayasinghe", gender: "male", relationship: "self", address: "Flat 4, Kiribathgoda" },
+        { firstName: "Lalitha", lastName: "Jayasinghe", gender: "female", relationship: "parent" },
+        { firstName: "Ruwan", lastName: "Jayasinghe", gender: "male", relationship: "self", address: "Flat 4, Kiribathgoda" },
       ],
     }),
     201,
@@ -169,8 +190,32 @@ async function main() {
   check("customer number generated", /^CUS-\d{5}$/.test(cust?.customerNo ?? ""), cust?.customerNo);
   check("2 patients created", cust?.patients?.length === 2);
   const [pMother, pSelf] = [cust.patients.find((p) => p.relationship === "parent"), cust.patients.find((p) => p.relationship === "self")];
-  const cust2 = expect("Create second customer", await call.post("/api/customers", { fullName: "Other Person", phone: "0779999999" }), 201);
-  const p2 = expect("Add patient to second customer", await call.post(`/api/customers/${cust2.id}/patients`, { fullName: "Other Patient", gender: "male" }), 201);
+  const withNic = expect("Customer with NIC only", await call.post("/api/customers", { firstName: "Saman", lastName: "Kumara", phone: "0779999996", nic: "853400937V" }), 201);
+  check("customer DOB filled from NIC", withNic?.dob === "1985-12-05", withNic?.dob);
+  expect("Customer DOB must match NIC", await call.post("/api/customers", { firstName: "Saman", lastName: "Kumara", phone: "0779999995", nic: "853400937V", dob: "1985-12-06" }), 400);
+  expect("Future DOB rejected", await call.post("/api/customers", { firstName: "Saman", lastName: "Kumara", phone: "0779999994", dob: "2999-01-01" }), 400);
+  const newNic = expect("Changing the NIC updates the DOB", await call.patch(`/api/customers/${withNic.id}`, { nic: "199086512345" }), 200);
+  check("DOB follows the new NIC", newNic?.dob === "1990-12-30", newNic?.dob);
+  const withMail = expect("Customer with email", await call.post("/api/customers", { firstName: "Mail", lastName: "Person", phone: "0779999993", email: "  Mail.Person@Gmail.COM " }), 201);
+  check("email stored trimmed + lower-case", withMail?.email === "mail.person@gmail.com", withMail?.email);
+  for (const bad of ["abc", "a@b", "a@b.c", "a b@c.lk", "a..b@c.lk", "a@-b.lk", "@gmail.com"]) {
+    expect(`Bad email "${bad}"`, await call.post("/api/customers", { firstName: "Mail", lastName: "Person", phone: "0779999992", email: bad }), 400);
+  }
+  expect("Employee bad email", await admin.patch(`/api/employees/${e1.id}`, { email: "nimali@" }), 400);
+  const eMail = expect("Employee email", await admin.patch(`/api/employees/${e1.id}`, { email: "nimali@care.lk" }), 200);
+  check("employee email saved", eMail?.email === "nimali@care.lk", eMail?.email);
+  const eMail2 = expect("Clear employee email", await admin.patch(`/api/employees/${e1.id}`, { email: "" }), 200);
+  check("employee email cleared", eMail2?.email === null, eMail2?.email);
+  expect("Customer without last name → 400", await call.post("/api/customers", { firstName: "Only", phone: "0779999998" }), 400);
+  const named = expect("Customer with middle name", await call.post("/api/customers", { firstName: "W.", middleName: "A. Nimal", lastName: "Fernando", phone: "0779999997" }), 201);
+  check("full name built from the three parts", named?.fullName === "W. A. Nimal Fernando", named?.fullName);
+  const cust2 = expect("Create second customer", await call.post("/api/customers", { firstName: "Other", lastName: "Person", phone: "0779999999" }), 201);
+  const p2 = expect("Add patient to second customer", await call.post(`/api/customers/${cust2.id}/patients`, { firstName: "Other", lastName: "Patient", gender: "male" }), 201);
+  expect("'Other' needs the real relationship", await call.post(`/api/customers/${cust2.id}/patients`, { firstName: "Gran", lastName: "Person", gender: "female", relationship: "other" }), 400);
+  const pOther = expect("Patient with relationship 'other'", await call.post(`/api/customers/${cust2.id}/patients`, { firstName: "Gran", lastName: "Person", gender: "female", relationship: "other", relationshipOther: "Grandmother" }), 201);
+  check("relationship text saved", pOther?.relationshipOther === "Grandmother", pOther?.relationshipOther);
+  const pOther2 = expect("Change 'other' to parent", await call.patch(`/api/patients/${pOther.id}`, { relationship: "parent" }), 200);
+  check("relationship text cleared", pOther2?.relationshipOther === null, pOther2?.relationshipOther);
   const search = expect("Search customer by phone", await call.get("/api/customers?q=0771234567"), 200);
   check("search finds the customer", search?.items?.[0]?.id === cust.id);
 
@@ -181,12 +226,12 @@ async function main() {
     201,
   );
   check("A number BK-YYYY-NNNNN", /^BK-\d{4}-\d{5}$/.test(bA?.bookingNo ?? ""), bA?.bookingNo);
-  check("A rate copied 4500.00", bA?.rate === "4500.00");
+  check("A uses the default package (4500.00, 24 h)", bA?.rate === "4500.00" && bA?.durationHours === 24 && bA?.packageName === "Standard 24 hours", bA);
   check("A address = customer address", bA?.serviceAddress === "12 Temple Rd, Kadawatha");
   check("A status pending", bA?.status === "pending");
   const bB = expect(
     "B: tomorrow, hospital",
-    await call.post("/api/bookings", { customerId: cust.id, patientId: pSelf.id, serviceDate: TOMORROW, startTime: "19:00", locationType: "hospital", hospitalId: hosp.id, wardRoom: "Ward 5" }),
+    await call.post("/api/bookings", { customerId: cust.id, patientId: pSelf.id, serviceDate: TOMORROW, startTime: "19:00", locationType: "hospital", hospitalId: hosp.id, wardNo: "5", bedNo: "12" }),
     201,
   );
   check("B hospital name", bB?.hospitalName === "Asiri Central");
@@ -198,6 +243,15 @@ async function main() {
   expect("Home booking with no address anywhere", await call.post("/api/bookings", { customerId: cust2.id, patientId: p2.id, serviceDate: TODAY, locationType: "home" }), 400);
   const bPatch = expect("Edit pending booking time", await call.patch(`/api/bookings/${bA.id}`, { startTime: "07:30" }), 200);
   check("time updated", bPatch?.startTime === "07:30:00");
+  const bPkg = expect("Switch A to the 12-hour package", await call.patch(`/api/bookings/${bA.id}`, { packageId: night.id }), 200);
+  check("hours, price and name copied from package", bPkg?.durationHours === 12 && bPkg?.rate === "2500.00" && bPkg?.packageName === "Night 12 hours", bPkg);
+  const bPkg2 = expect("Switch A back to Standard", await call.patch(`/api/bookings/${bA.id}`, { packageId: std.id }), 200);
+  check("back to 24 h / 4500.00", bPkg2?.durationHours === 24 && bPkg2?.rate === "4500.00");
+  await admin.patch(`/api/packages/${night.id}`, { isActive: false });
+  expect("Inactive package can't be booked", await call.patch(`/api/bookings/${bA.id}`, { packageId: night.id }), 400);
+
+  expect("Hospital booking needs a ward no", await call.post("/api/bookings", { customerId: cust.id, patientId: pSelf.id, serviceDate: TOMORROW, startTime: "20:00", locationType: "hospital", hospitalId: hosp.id }), 400);
+  expect("Bad bed no", await call.post("/api/bookings", { customerId: cust.id, patientId: pSelf.id, serviceDate: TOMORROW, startTime: "20:00", locationType: "hospital", hospitalId: hosp.id, wardNo: "ICU", bedNo: "12!" }), 400);
 
   section("Call list");
   const cl = expect("Today's call list", await call.get("/api/call-list?day=today"), 200);
@@ -272,7 +326,7 @@ async function main() {
   expect("Manager can't use call list", await mgr.get("/api/call-list"), 403);
   const me2 = expect("Manager employees list", await mgr.get("/api/employees"), 200);
   check("manager sees only KDW employees", me2?.total === 2, me2?.total);
-  expect("Manager can't add employees (view only)", await mgr.post("/api/employees", { branchId: kdw.id, fullName: "X", gender: "male", phone: "0711111119" }), 403);
+  expect("Manager can't add employees (view only)", await mgr.post("/api/employees", { branchId: kdw.id, firstName: "X", lastName: "Test", gender: "male", phone: "0711111119" }), 403);
   expect("Manager can't add leave (view only)", await mgr.post(`/api/employees/${e1.id}/leaves`, { fromDate: TOMORROW, toDate: TOMORROW }), 403);
   expect("Manager can't open GMP employee", await mgr.get(`/api/employees/${e3.id}`), 404);
   expect("Manager can't open ignored/unassigned booking D", await mgr.get(`/api/bookings/${bD.id}`), 404);

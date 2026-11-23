@@ -1,4 +1,5 @@
 import { HeartPulse } from "lucide-react";
+import { hospitalPlace } from "@/lib/lk-rules";
 import { notFound } from "next/navigation";
 import { money, niceDate, niceTime } from "@/components/ui";
 import { getInvoice } from "@/features/invoices/service";
@@ -19,7 +20,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
     throw e;
   });
 
-  const where = inv.locationType === "hospital" ? `${inv.hospitalName}${inv.wardRoom ? `, ${inv.wardRoom}` : ""}` : inv.serviceAddress;
+  const where = inv.locationType === "hospital" ? hospitalPlace(inv.hospitalName, inv.wardNo, inv.bedNo, ", ") : inv.serviceAddress;
 
   return (
     <div className="mx-auto max-w-[820px]">
@@ -84,7 +85,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
           <tbody>
             <tr className="border-b border-slate-100 align-top">
               <td className="py-4 pr-4">
-                <div className="font-medium text-slate-900">{inv.durationHours}-hour care session</div>
+                <div className="font-medium text-slate-900">{inv.packageName ? `${inv.packageName} · ` : ""}{inv.durationHours}-hour care session</div>
                 <div className="mt-0.5 text-slate-500">
                   {niceDate(inv.serviceDate)} from {niceTime(inv.startTime)} · {inv.locationType === "hospital" ? "Hospital" : "Home"}: {where}
                 </div>

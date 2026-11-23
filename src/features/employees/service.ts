@@ -6,8 +6,9 @@ import { ASSIGNABLE_DESIGNATIONS, bookings, branches, DESIGNATIONS, employeeLeav
 import type { CurrentUser } from "@/lib/dal";
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { branchScope, canAccessBranch } from "@/lib/permissions";
+import { checkAgainstNic } from "@/lib/nic-check";
 import { nextNumber } from "@/lib/sequences";
-import { id, isoDate, nic, nullableText, optText, pageParams, pagination, phone, reqText, type Paged } from "@/lib/validation";
+import { id, isoDate, nullableEmail, nullablePhone, optEmail, optPhone, nameFields, nameFieldsUpdate, nullableBirthDate, nullableNic, optBirthDate, optNic, nullableText, optText, pageParams, pagination, phone, reqText, type Paged } from "@/lib/validation";
 
 /** Booking statuses that keep an employee busy on that date. */
 export const BUSY_STATUSES = ["assigned", "delivered", "invoice_printed"] as const;
@@ -15,12 +16,13 @@ export const BUSY_STATUSES = ["assigned", "delivered", "invoice_printed"] as con
 // ---------------------------------------------------------------- schemas
 export const EmployeeCreateSchema = z.object({
   branchId: id,
-  fullName: reqText(150, "Full name"),
-  nic: nic.optional(),
+  ...nameFields,
+  nic: optNic,
   gender: z.enum(["male", "female"], { error: "Gender must be male or female." }),
-  dob: isoDate.optional(),
+  dob: optBirthDate,
   phone,
-  altPhone: phone.optional(),
+  altPhone: optPhone,
+  email: optEmail,
   address: optText(255),
   designation: z.enum(DESIGNATIONS, { error: `Type must be one of: ${DESIGNATIONS.join(", ")}.` }).default("Caregiver"),
   qualifications: optText(2000),
@@ -29,12 +31,13 @@ export const EmployeeCreateSchema = z.object({
 
 export const EmployeeUpdateSchema = z.object({
   branchId: id.optional(),
-  fullName: reqText(150, "Full name").optional(),
-  nic: nic.nullable().optional(),
+  ...nameFieldsUpdate,
+  nic: nullableNic,
   gender: z.enum(["male", "female"]).optional(),
-  dob: isoDate.nullable().optional(),
+  dob: nullableBirthDate,
   phone: phone.optional(),
-  altPhone: phone.nullable().optional(),
+  altPhone: nullablePhone,
+  email: nullableEmail,
   address: nullableText(255),
   designation: z.enum(DESIGNATIONS, { error: `Type must be one of: ${DESIGNATIONS.join(", ")}.` }).optional(),
   qualifications: nullableText(2000),
@@ -62,12 +65,16 @@ const employeeColumns = {
   empNo: employees.empNo,
   branchId: employees.branchId,
   branchName: branches.name,
+  firstName: employees.firstName,
+  middleName: employees.middleName,
+  lastName: employees.lastName,
   fullName: employees.fullName,
   nic: employees.nic,
   gender: employees.gender,
   dob: employees.dob,
   phone: employees.phone,
   altPhone: employees.altPhone,
+  email: employees.email,
   address: employees.address,
   designation: employees.designation,
   qualifications: employees.qualifications,
@@ -130,6 +137,8 @@ async function checkBranchExists(branchId: number) {
 export async function createEmployee(input: z.infer<typeof EmployeeCreateSchema>, user: CurrentUser) {
   checkBranchForManager(user, input.branchId);
   await checkBranchExists(input.branchId);
+  const nicDob = checkAgainstNic(input);
+  if (nicDob) input = { ...input, dob: nicDob };
   const employeeId = await db.transaction(async (tx) => {
     const empNo = await nextNumber(tx, "employee");
     const [res] = await tx.insert(employees).values({ ...input, empNo });
@@ -139,7 +148,9 @@ export async function createEmployee(input: z.infer<typeof EmployeeCreateSchema>
 }
 
 export async function updateEmployee(employeeId: number, input: z.infer<typeof EmployeeUpdateSchema>, user: CurrentUser) {
-  await getEmployee(employeeId, user);
+  const saved = await getEmployee(employeeId, user);
+  const nicDob = checkAgainstNic(input, saved);
+  if (nicDob) input = { ...input, dob: nicDob };
   if (input.branchId) {
     checkBranchForManager(user, input.branchId);
     await checkBranchExists(input.branchId);

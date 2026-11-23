@@ -53,12 +53,16 @@ CREATE TABLE employees (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   emp_no          VARCHAR(20)  NOT NULL,
   branch_id       INT UNSIGNED NOT NULL,
-  full_name       VARCHAR(150) NOT NULL,
+  first_name      VARCHAR(60)  NOT NULL,
+  middle_name     VARCHAR(80)  NULL,
+  last_name       VARCHAR(60)  NOT NULL,
+  full_name       VARCHAR(205) GENERATED ALWAYS AS (CONCAT_WS(' ', first_name, middle_name, last_name)) STORED, -- for display & search
   nic             VARCHAR(12)  NULL,
   gender          ENUM('male','female') NOT NULL,
   dob             DATE         NULL,
   phone           VARCHAR(20)  NOT NULL,
   alt_phone       VARCHAR(20)  NULL,
+  email           VARCHAR(160) NULL,
   address         VARCHAR(255) NULL,
   designation     VARCHAR(60)  NOT NULL DEFAULT 'Caregiver',
   qualifications  TEXT         NULL,
@@ -113,10 +117,15 @@ CREATE TABLE hospitals (
 CREATE TABLE customers (
   id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   customer_no  VARCHAR(20)  NOT NULL,
-  full_name    VARCHAR(150) NOT NULL,
+  first_name   VARCHAR(60)  NOT NULL,
+  middle_name  VARCHAR(80)  NULL,
+  last_name    VARCHAR(60)  NOT NULL,
+  full_name    VARCHAR(205) GENERATED ALWAYS AS (CONCAT_WS(' ', first_name, middle_name, last_name)) STORED, -- for display & search
   nic          VARCHAR(12)  NULL,
+  dob          DATE         NULL,               -- filled from the NIC when one is given
   phone        VARCHAR(20)  NOT NULL,
   alt_phone    VARCHAR(20)  NULL,
+  email        VARCHAR(160) NULL,
   address      VARCHAR(255) NULL,
   city         VARCHAR(80)  NULL,
   notes        TEXT         NULL,
@@ -136,10 +145,14 @@ CREATE TABLE patients (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   patient_no    VARCHAR(20)  NOT NULL,
   customer_id   INT UNSIGNED NOT NULL,
-  full_name     VARCHAR(150) NOT NULL,
+  first_name    VARCHAR(60)  NOT NULL,
+  middle_name   VARCHAR(80)  NULL,
+  last_name     VARCHAR(60)  NOT NULL,
+  full_name     VARCHAR(205) GENERATED ALWAYS AS (CONCAT_WS(' ', first_name, middle_name, last_name)) STORED, -- for display & search
   gender        ENUM('male','female') NOT NULL,
   dob           DATE         NULL,
   relationship  ENUM('self','parent','spouse','child','sibling','other') NOT NULL DEFAULT 'self',
+  relationship_other VARCHAR(60) NULL,           -- the real relationship when 'other' (e.g. Grandmother)
   address       VARCHAR(255) NULL,
   care_notes    TEXT         NULL,
   created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -147,6 +160,24 @@ CREATE TABLE patients (
   UNIQUE KEY uq_patients_no (patient_no),
   KEY idx_patients_customer (customer_id),
   CONSTRAINT fk_patients_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 7b. Packages (what a booking sells: e.g. "Standard 24 hours" - Rs 4,500)
+--     Price and hours are copied onto each booking, so changing a package
+--     never changes existing bookings or invoices.
+-- ---------------------------------------------------------------------
+CREATE TABLE packages (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name            VARCHAR(80)  NOT NULL,
+  duration_hours  TINYINT UNSIGNED NOT NULL,      -- 1 to 24
+  price           DECIMAL(10,2) NOT NULL,
+  description     VARCHAR(255) NULL,
+  is_default      TINYINT(1)   NOT NULL DEFAULT 0, -- pre-selected on new bookings (exactly one)
+  is_active       TINYINT(1)   NOT NULL DEFAULT 1, -- inactive = hidden from the booking form
+  created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_packages_name (name)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -161,12 +192,15 @@ CREATE TABLE bookings (
   patient_id       INT UNSIGNED NOT NULL,
   service_date     DATE         NOT NULL,
   start_time       TIME         NOT NULL DEFAULT '08:00:00',
-  duration_hours   TINYINT UNSIGNED NOT NULL DEFAULT 24,
+  package_id       INT UNSIGNED NULL,             -- the package chosen (NULL only for very old rows)
+  package_name     VARCHAR(80)  NULL,             -- copied from the package (invoice text)
+  duration_hours   TINYINT UNSIGNED NOT NULL DEFAULT 24, -- copied from the package
   location_type    ENUM('home','hospital') NOT NULL,
   hospital_id      INT UNSIGNED NULL,             -- required when location_type = hospital
-  ward_room        VARCHAR(60)  NULL,
+  ward_no          VARCHAR(60)  NULL,             -- required when location_type = hospital
+  bed_no           VARCHAR(30)  NULL,
   service_address  VARCHAR(255) NULL,             -- required when location_type = home
-  rate             DECIMAL(10,2) NOT NULL,        -- copied from settings.session_rate
+  rate             DECIMAL(10,2) NOT NULL,        -- copied from the package price
   status           ENUM('pending','confirmed','ignored','assigned','delivered','invoice_printed')
                    NOT NULL DEFAULT 'pending',
   employee_id      INT UNSIGNED NULL,             -- set on assignment
@@ -199,10 +233,12 @@ CREATE TABLE bookings (
   KEY idx_bookings_employee_date (employee_id, service_date),
   KEY idx_bookings_branch_date (branch_id, service_date),
   KEY idx_bookings_hospital (hospital_id),
+  KEY idx_bookings_package (package_id),
 
   CONSTRAINT fk_bookings_customer  FOREIGN KEY (customer_id)  REFERENCES customers(id),
   CONSTRAINT fk_bookings_patient   FOREIGN KEY (patient_id)   REFERENCES patients(id),
   CONSTRAINT fk_bookings_hospital  FOREIGN KEY (hospital_id)  REFERENCES hospitals(id),
+  CONSTRAINT fk_bookings_package   FOREIGN KEY (package_id)   REFERENCES packages(id),
   CONSTRAINT fk_bookings_employee  FOREIGN KEY (employee_id)  REFERENCES employees(id),
   CONSTRAINT fk_bookings_branch    FOREIGN KEY (branch_id)    REFERENCES branches(id),
   CONSTRAINT fk_bookings_created   FOREIGN KEY (created_by)   REFERENCES users(id),
@@ -288,9 +324,10 @@ CREATE TABLE sequences (
 -- ---------------------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------------------
+INSERT INTO packages (name, duration_hours, price, description, is_default) VALUES
+  ('Standard 24 hours', 24, 4500.00, 'One caregiver for a full 24-hour session', 1);
+
 INSERT INTO settings (setting_key, value) VALUES
-  ('session_rate',     '4500.00'),
-  ('session_hours',    '24'),
   ('invoice_prefix',   'INV'),
   ('booking_prefix',   'BK'),
   ('company_name',     'Company name here'),

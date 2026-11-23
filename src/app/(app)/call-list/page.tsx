@@ -1,4 +1,5 @@
 import { CalendarDays, Home, Hospital, Phone, PhoneCall } from "lucide-react";
+import { hospitalPlace } from "@/lib/lk-rules";
 import Link from "next/link";
 import * as z from "zod";
 import { AssignButton, ConfirmButton, IgnoreButton } from "@/components/app/booking-actions";
@@ -157,7 +158,7 @@ export default async function CallListPage({ searchParams }: PageProps<"/call-li
                       <div className="flex items-start gap-1.5 text-xs">
                         {b.locationType === "hospital" ? <Hospital size={14} className="mt-0.5 shrink-0 text-accent" /> : <Home size={14} className="mt-0.5 shrink-0 text-accent" />}
                         <span className="line-clamp-2">
-                          {b.locationType === "hospital" ? `${b.hospitalName}${b.wardRoom ? ` · ${b.wardRoom}` : ""}` : b.serviceAddress}
+                          {b.locationType === "hospital" ? hospitalPlace(b.hospitalName, b.wardNo, b.bedNo) : b.serviceAddress}
                         </span>
                       </div>
                     </Td>

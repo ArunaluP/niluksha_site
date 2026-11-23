@@ -10,7 +10,7 @@ export const GET = api({ permission: "viewReports" }, async ({ req, user }) => l
 /**
  * POST /api/bookings
  * { customerId, patientId, serviceDate, startTime?, locationType: "home"|"hospital",
- *   hospitalId?, wardRoom?, serviceAddress?, notes? }
+ *   hospitalId?, wardNo?, bedNo?, serviceAddress?, notes? }
  */
 export const POST = api({ permission: "createBooking" }, async ({ req, user }) =>
   ok(await createBooking(await readBody(req, BookingCreateSchema), user), 201),

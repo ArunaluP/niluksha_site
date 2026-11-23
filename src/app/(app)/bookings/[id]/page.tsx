@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { hospitalPlace, relationshipLabel } from "@/lib/lk-rules";
 import { ArrowLeft, CalendarClock, FileText, Home, Hospital, Phone, StickyNote, UserRound } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,6 +16,7 @@ import { NotFoundError } from "@/lib/errors";
 import { hasPermission } from "@/lib/permissions";
 import { deliverBookingAction, unassignEmployeeAction } from "../../_actions/bookings";
 import { EditBookingButton } from "./edit-booking";
+import { listPackages } from "@/features/packages/service";
 
 export const metadata = { title: "Booking · Care Booking" };
 
@@ -30,10 +32,11 @@ export default async function BookingDetailPage({ params }: PageProps<"/bookings
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
-  const [[cust], [pat], hospitalList] = await Promise.all([
+  const [[cust], [pat], hospitalList, packageList] = await Promise.all([
     db.select().from(customers).where(eq(customers.id, b.customerId)),
     db.select().from(patients).where(eq(patients.id, b.patientId)),
     db.select({ id: hospitals.id, name: hospitals.name, city: hospitals.city }).from(hospitals).where(eq(hospitals.isActive, true)).orderBy(asc(hospitals.name)),
+    listPackages({ active: true }),
   ]);
 
   const can = (p: Parameters<typeof hasPermission>[1]) => hasPermission(user, p);
@@ -60,7 +63,7 @@ export default async function BookingDetailPage({ params }: PageProps<"/bookings
         {/* Actions for the current step */}
         <div className="flex flex-wrap gap-2">
           {(b.status === "pending" || b.status === "confirmed") && can("createBooking") && (
-            <EditBookingButton booking={{ ...b, locationType: b.locationType as "home" | "hospital" }} hospitals={hospitalList} today={t} />
+            <EditBookingButton booking={{ ...b, locationType: b.locationType as "home" | "hospital" }} hospitals={hospitalList} packages={packageList.map((p) => ({ id: p.id, name: p.name, durationHours: p.durationHours, price: p.price }))} today={t} />
           )}
           {b.status === "pending" && can("useCallList") && <ConfirmButton bookingId={b.id} size="md" />}
           {b.status === "confirmed" && can("assignEmployee") && <AssignButton bookingId={b.id} bookingNo={b.bookingNo} serviceDate={b.serviceDate} size="md" />}
@@ -152,7 +155,7 @@ export default async function BookingDetailPage({ params }: PageProps<"/bookings
                   <div>
                     <div className="font-medium">{b.patientName}</div>
                     <div className="text-xs text-muted">
-                      {pat?.relationship === "self" ? "Customer themself" : cap(pat?.relationship)} · {cap(pat?.gender)}
+                      {relationshipLabel(pat?.relationship, pat?.relationshipOther)} · {cap(pat?.gender)}
                     </div>
                   </div>
                 </div>
@@ -168,13 +171,13 @@ export default async function BookingDetailPage({ params }: PageProps<"/bookings
                 {niceDate(b.serviceDate)}, {niceTime(b.startTime)} · {b.durationHours} hours
               </Info>
               <Info icon={b.locationType === "hospital" ? <Hospital size={14} /> : <Home size={14} />} label="Where">
-                {b.locationType === "hospital" ? `${b.hospitalName}${b.wardRoom ? `, ${b.wardRoom}` : ""}` : b.serviceAddress}
+                {b.locationType === "hospital" ? hospitalPlace(b.hospitalName, b.wardNo, b.bedNo, ", ") : b.serviceAddress}
               </Info>
               <Info icon={<UserRound size={14} />} label="Employee">
                 {b.employeeName ? `${b.employeeName}${b.employeePhone ? ` · ${b.employeePhone}` : ""}${b.branchName ? ` (${b.branchName})` : ""}` : "Not assigned yet"}
               </Info>
-              <Info icon={<FileText size={14} />} label="Rate">
-                {money(b.rate)}
+              <Info icon={<FileText size={14} />} label="Package">
+                {b.packageName ?? "—"} · {money(b.rate)}
               </Info>
               {b.notes && (
                 <Info icon={<StickyNote size={14} />} label="Notes" className="sm:col-span-2">

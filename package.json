@@ -9,6 +9,7 @@
     "lint": "eslint",
     "create-user": "tsx --env-file=.env.local scripts/create-user.ts",
     "typecheck": "tsc --noEmit",
+    "db:check": "tsx --env-file=.env.local scripts/check-db.ts",
     "test:api": "node scripts/test-api.mjs",
     "seed:demo": "node scripts/seed-demo.mjs"
   },

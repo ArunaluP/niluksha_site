@@ -45,12 +45,13 @@ export default async function DashboardPage() {
         <div className="flex gap-2">
           {canWork && (
             <>
-              <LinkButton href="/call-list" variant="secondary">
-                <PhoneCall size={16} /> Call list
-              </LinkButton>
               <LinkButton href="/bookings/new">
                 <CalendarPlus size={16} /> New booking
               </LinkButton>
+              <LinkButton href="/call-list" variant="secondary">
+                <PhoneCall size={16} /> Call list
+              </LinkButton>
+              
             </>
           )}
         </div>

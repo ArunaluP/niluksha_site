@@ -6,6 +6,7 @@ import {
   Hospital,
   LayoutGrid,
   LogOut,
+  Package,
   PhoneCall,
   Settings,
   UserCog,
@@ -34,8 +35,8 @@ const GROUPS: { title: string; items: Item[] }[] = [
   {
     title: "Operations",
     items: [
-      { href: "/call-list", label: "Call List", icon: <PhoneCall size={ICON} />, permission: "useCallList" },
       { href: "/bookings/new", label: "New Booking", icon: <CalendarPlus size={ICON} />, permission: "createBooking", exact: true },
+      { href: "/call-list", label: "Call List", icon: <PhoneCall size={ICON} />, permission: "useCallList" },
       { href: "/assignments", label: "Assignments", icon: <UserCheck size={ICON} />, permission: "assignEmployee" },
       { href: "/bookings", label: "Bookings", icon: <ClipboardList size={ICON} />, permission: "viewReports", exact: true },
       { href: "/invoices", label: "Invoices", icon: <FileText size={ICON} />, permission: "viewInvoices" },
@@ -54,6 +55,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: "Settings",
     items: [
       { href: "/users", label: "Users", icon: <UserCog size={ICON} />, permission: "manageUsers" },
+      { href: "/packages", label: "Packages", icon: <Package size={ICON} />, permission: "managePackages" },
       { href: "/settings", label: "Settings", icon: <Settings size={ICON} />, permission: "manageSettings" },
     ],
   },
