@@ -10,7 +10,8 @@
     "create-user": "tsx --env-file=.env.local scripts/create-user.ts",
     "typecheck": "tsc --noEmit",
     "test:api": "node scripts/test-api.mjs",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "seed:staff": "node scripts/seed-staff.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
