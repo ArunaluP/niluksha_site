@@ -62,6 +62,10 @@ Uses `ADMIN_EMAIL` / `ADMIN_PASSWORD` (defaults `admin@test.lk` / `Admin@1234`).
 3 hospitals, 6 customers and a week of bookings, plus logins `call@demo.lk` / `Call@1234` and
 `mgr.kdw@demo.lk` / `Mgr@12345`.
 
+`npm run seed:staff` only adds sample **branches, employees and hospitals** (6 branches, 21 staff, 16 hospitals).
+It works on a database that already has data and can be run again safely: existing branch codes, employees and
+hospitals (same name + city) are skipped.
+
 ## REST API
 
 See **docs/API.md** for every endpoint, and import **docs/care-booking.postman_collection.json**
