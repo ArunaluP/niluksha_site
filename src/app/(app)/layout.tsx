@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Building2,
   CalendarPlus,
   ClipboardList,
@@ -30,7 +31,10 @@ const ICON = 17;
 const GROUPS: { title: string; items: Item[] }[] = [
   {
     title: "Overview",
-    items: [{ href: "/dashboard", label: "Dashboard", icon: <LayoutGrid size={ICON} /> }],
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: <LayoutGrid size={ICON} /> },
+      { href: "/reports", label: "Reports", icon: <BarChart3 size={ICON} />, permission: "viewReports" },
+    ],
   },
   {
     title: "Operations",

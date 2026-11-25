@@ -194,6 +194,13 @@ export async function getBooking(bookingId: number, user: CurrentUser) {
   return { ...row, history, invoice: invoice ?? null };
 }
 
+/** Same as getBooking, found by booking number ("BK-2026-00018"). Other branches → 404. */
+export async function getBookingByNo(bookingNo: string, user: CurrentUser) {
+  const [row] = await db.select({ id: bookings.id }).from(bookings).where(eq(bookings.bookingNo, bookingNo.toUpperCase()));
+  if (!row) throw new NotFoundError("Booking");
+  return getBooking(row.id, user);
+}
+
 /**
  * The call center's daily list. view=pending: still to call;
  * view=done: already confirmed/ignored/assigned/...; view=all: everything that day.

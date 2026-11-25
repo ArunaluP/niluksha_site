@@ -97,7 +97,7 @@ export default async function BookingsPage({ searchParams }: PageProps<"/booking
                 {items.map((b) => (
                   <tr key={b.id} className="transition hover:bg-white/50">
                     <Td className="whitespace-nowrap">
-                      <Link href={`/bookings/${b.id}`} className="font-semibold text-accent hover:underline">
+                      <Link href={`/bookings/${b.bookingNo}`} className="font-semibold text-accent hover:underline">
                         {b.bookingNo}
                       </Link>
                       <div className="text-xs text-muted">

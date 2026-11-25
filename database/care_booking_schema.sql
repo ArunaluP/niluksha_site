@@ -260,11 +260,15 @@ CREATE TABLE booking_status_logs (
   from_status  ENUM('pending','confirmed','ignored','assigned','delivered','invoice_printed') NULL,
   to_status    ENUM('pending','confirmed','ignored','assigned','delivered','invoice_printed') NOT NULL,
   user_id      INT UNSIGNED NOT NULL,
+  employee_id  INT UNSIGNED NULL,               -- "-> assigned" logs: who was assigned
   note         VARCHAR(255) NULL,
   created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_logs_booking (booking_id, created_at),
-  CONSTRAINT fk_logs_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-  CONSTRAINT fk_logs_user    FOREIGN KEY (user_id)    REFERENCES users(id)
+  KEY idx_logs_created (created_at),            -- Reports: events in a date range
+  KEY idx_logs_employee (employee_id),
+  CONSTRAINT fk_logs_booking  FOREIGN KEY (booking_id)  REFERENCES bookings(id) ON DELETE CASCADE,
+  CONSTRAINT fk_logs_user     FOREIGN KEY (user_id)     REFERENCES users(id),
+  CONSTRAINT fk_logs_employee FOREIGN KEY (employee_id) REFERENCES employees(id)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------

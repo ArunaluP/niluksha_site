@@ -167,7 +167,7 @@ export default async function EmployeePage({ params }: PageProps<"/employees/[id
           <div className="space-y-2 px-5 pb-5">
             {upcoming.length === 0 && <p className="py-6 text-center text-sm text-muted">Nothing assigned.</p>}
             {upcoming.map((b) => (
-              <Link key={b.id} href={`/bookings/${b.id}`} className="flex items-center gap-3 rounded-xl bg-white/60 p-3 text-sm hover:bg-white/90">
+              <Link key={b.id} href={`/bookings/${b.bookingNo}`} className="flex items-center gap-3 rounded-xl bg-white/60 p-3 text-sm hover:bg-white/90">
                 <div className="flex-1">
                   <div className="font-medium">{b.patientName}</div>
                   <div className="text-xs text-muted">

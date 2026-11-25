@@ -95,7 +95,10 @@ Only **Caregivers and Nurses** appear as free employees and can be assigned to p
 |---|---|
 | GET | `/api/bookings?date=&from=&to=&status=pending,confirmed&customerId=&employeeId=&branchId=&q=&page=&pageSize=` |
 | GET | `/api/bookings/:id` — details, status history, invoice |
+| GET | `/api/bookings/:id/journey` — the whole flow: milestones, every event, durations (see **Booking journey** below; `:id` may also be the booking number) |
 | GET | `/api/dashboard?date=` — counts by status, invoices waiting to print |
+| GET | `/api/reports/activity?from=&to=&event=&branchId=&page=&pageSize=` — everything that happened in a period (see **Reports** below) |
+| GET | `/api/reports/activity/csv?from=&to=&event=&branchId=` — the same events as a CSV file |
 
 ### Master data
 | Method | URL | Body |
@@ -158,3 +161,106 @@ With `locationType: "hospital"`: `hospitalId` and `wardNo` are required, `bedNo`
 A booking copies the package's name, hours and price (`packageName`, `durationHours`, `rate`), so editing a
 package never changes existing bookings or invoices. Leave `packageId` out to use the default package.
 Exactly one package is the default; it can't be made inactive.
+
+### Reports (activity)
+Permission `viewReports`: Director and call center see everything; **branch managers see only bookings assigned
+to their branch** (same rule as `/api/bookings`, so not-yet-assigned and released bookings are hidden from them).
+
+Every row of `booking_status_logs` is one **event**, classified by `from_status → to_status`
+(the mapping lives in `src/features/reports/events.ts`):
+
+| from → to | `event` | Label |
+|---|---|---|
+| `null → pending` | `created` | New booking |
+| `pending → confirmed` | `confirmed` | Confirmed |
+| any `→ ignored` | `ignored` | Ignored (`note` = reason) |
+| `confirmed → assigned` | `assigned` | Assigned |
+| `assigned → assigned` | `reassigned` | Reassigned |
+| `assigned → confirmed` | `unassigned` | Unassigned |
+| `assigned → delivered` | `delivered` | Delivered (invoice created) |
+| `delivered → invoice_printed` | `invoice_printed` | Invoice printed |
+
+**Query** (all optional)
+
+| Param | Meaning |
+|---|---|
+| `from`, `to` | `YYYY-MM-DD`, default today. `from` ≤ `to`, at most 366 days, not in the future (→ 400). Only `from` → up to today; only `to` → that one day. |
+| `event` | one of the keys above: bookings whose **last step** in the period is that event. `assigned` also matches `reassigned` (like the Assigned card). |
+| `branchId` | Director only; ignored for other roles. |
+| `page`, `pageSize` | default 1 / 50, max 100 (JSON only; the CSV has every event). |
+
+**GET `/api/reports/activity`** returns
+
+```json
+{
+  "period":  { "from": "2026-11-24", "to": "2026-11-24", "days": 1, "label": "24 Nov 2026" },
+  "filters": { "event": null, "branchId": null },
+  "counts":  { "created": 0, "confirmed": 0, "ignored": 1, "assigned": 1, "reassigned": 0, "unassigned": 0, "delivered": 1, "invoice_printed": 1 },
+  "money":   { "delivered": { "value": "9000.00", "count": 2 }, "invoicesPrinted": { "value": "4500.00", "count": 1 } },
+  "byBranch":  [{ "branchId": 1, "branchName": "Kadawatha", "sessions": 2, "value": "9000.00" }],
+  "byPackage": [{ "packageName": "Standard 24 hours", "durationHours": 24, "sessions": 2, "value": "9000.00" }],
+  "events": [{ "id": 19, "at": "…", "event": "invoice_printed", "bookingId": 1, "bookingNo": "BK-2026-00001",
+               "status": "invoice_printed", "customerName": "…", "customerPhone": "…", "patientName": "…",
+               "serviceDate": "2026-11-24", "startTime": "07:30:00", "packageName": "Standard 24 hours", "durationHours": 24,
+               "rate": "4500.00", "branchName": "Kadawatha", "employeeName": "…", "doneBy": "Call Agent", "note": null,
+               "invoiceNo": "INV-2026-00001",
+               "steps": ["created", "confirmed", "assigned", "delivered", "invoice_printed"], "…": "…" }],
+  "total": 4, "page": 1, "pageSize": 50
+}
+```
+
+- **One row per booking** touched in the period: its **last** event there (the step it reached), with `steps` =
+  all of that booking's events in the period, oldest first. `total` = number of bookings.
+- `counts` count each booking **once**, under that last step (a booking created, confirmed and assigned today
+  counts only as `assigned`).
+- `money`, `byBranch`, `byPackage` count **every** delivery / invoice printed in the period (a booking delivered
+  and then printed the same day is still in Delivered value).
+- `counts`, `money`, `byBranch`, `byPackage` cover the whole period (they ignore `event` and paging).
+- **Delivered value** = sum of `bookings.rate` for bookings delivered in the period; **invoices printed value** = sum of
+  `invoices.amount` for invoices marked printed in the period. Breakdowns are of delivered sessions, highest value first.
+- `status` on each row is the booking's **current** status. Rows are newest first (by their last event).
+
+**GET `/api/reports/activity/csv`**: `text/csv; charset=utf-8` with a UTF-8 BOM (Excel shows Sinhala/Tamil names),
+`Content-Disposition: attachment; filename="activity_<from>_to_<to>.csv"`. Columns: Date, Time, Event, Booking no,
+Customer, Customer phone, Patient, Service date, Start time, Package, Hours, Rate, Branch, Employee, Current status,
+Done by, Note, Steps in period. One row per booking, like the JSON.
+
+### Booking journey
+**GET `/api/bookings/:id/journey`** (permission `viewReports`): the booking's whole flow in one response, used by the
+Reports side panel and the booking page. `:id` is the numeric id **or** the booking number (`BK-2026-00018`).
+Branch managers get **404** for bookings of another branch (same rule as `/api/bookings/:id`).
+
+```json
+{
+  "booking":    { "id": 1, "bookingNo": "BK-2026-00001", "status": "invoice_printed", "serviceDate": "2026-11-24", "startTime": "07:30:00",
+                  "durationHours": 24, "packageName": "Standard 24 hours", "rate": "4500.00", "locationType": "home",
+                  "hospitalName": null, "wardNo": null, "bedNo": null, "serviceAddress": "…", "notes": null, "createdAt": "…" },
+  "customer":   { "id": 1, "customerNo": "CUS-00001", "fullName": "…", "phone": "…" },
+  "patient":    { "id": 1, "patientNo": "…", "fullName": "…", "gender": "female", "relationship": "parent", "relationshipOther": null },
+  "assignment": { "employeeName": "Nimali Perera", "empNo": "EMP-0001", "designation": "Caregiver", "branchName": "Kadawatha" },
+  "invoice":    { "id": 1, "invoiceNo": "INV-2026-00001", "amount": "4500.00", "status": "printed", "printCount": 1, "printedAt": "…" },
+  "milestones": [{ "key": "booked", "label": "Booked", "state": "done", "at": "…", "byUser": "Call Agent", "sincePrevious": null },
+                 { "key": "confirmed", "label": "Confirmed", "state": "done", "at": "…", "byUser": "Call Agent", "sincePrevious": 12 }, "…"],
+  "ignored":    null,
+  "events":     [{ "id": 7, "kind": "reassigned", "label": "Reassigned", "at": "…", "byUser": "Call Agent", "note": "…",
+                   "employee": { "name": "Sunil Fernando", "empNo": "EMP-0003", "branchName": "Gampaha" },
+                   "previousEmployee": { "name": "Nimali Perera", "empNo": "EMP-0001", "branchName": "Kadawatha" } }, "…"],
+  "stats":      { "toConfirm": 12, "toAssign": 40, "toDeliver": 300, "bookingToDelivery": 352 }
+}
+```
+
+- `milestones`: always the 5 steps `booked, confirmed, assigned, delivered, invoice_printed`, in order. `state` is
+  `done`, `current` (the next step still to happen), `upcoming` or `skipped` (after an ignore). `at` / `byUser` come from the
+  **first** log that reached the step; `assigned` is the start of the assignment still in effect (a reassignment keeps it, an
+  unassign clears it until the next assign). `sincePrevious` = minutes since the previous done step.
+- `ignored`: `{ at, byUser, note }` when the booking is ignored (`note` = the reason), else `null`.
+- `events`: every status log, oldest first. `kind` / `label` use the same mapping as Reports (table above).
+  `employee` = who was assigned (assigned / reassigned) or removed (unassigned); `null` = not recorded (logs from before
+  migration 009). Reassignments also have `previousEmployee`.
+- `stats`: minutes booked→confirmed, confirmed→assigned, assigned→delivered, booked→delivered; `null` until reached.
+- Dates are ISO 8601 (UTC); the screens show them in Sri Lanka time.
+
+### Booking page URLs
+The booking screen is **`/bookings/BK-2026-00018`** (the booking number). Old links like `/bookings/12` redirect there,
+keeping the query string. `?from=reports&back=/reports?...` shows "← Back to Reports" (only `/reports…` targets are accepted).
+The REST API keeps numeric ids: `/api/bookings/:id`.

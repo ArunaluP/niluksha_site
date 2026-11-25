@@ -137,7 +137,7 @@ export default async function CallListPage({ searchParams }: PageProps<"/call-li
                   <tr key={b.id} className="transition hover:bg-white/50">
                     <Td className="whitespace-nowrap">
                       <div className="font-semibold">{niceTime(b.startTime)}</div>
-                      <Link href={`/bookings/${b.id}`} className="text-xs text-accent hover:underline">
+                      <Link href={`/bookings/${b.bookingNo}`} className="text-xs text-accent hover:underline">
                         {b.bookingNo}
                       </Link>
                     </Td>
@@ -176,7 +176,7 @@ export default async function CallListPage({ searchParams }: PageProps<"/call-li
                         )}
                         {b.status === "confirmed" && <AssignButton bookingId={b.id} bookingNo={b.bookingNo} serviceDate={b.serviceDate} />}
                         {b.status !== "pending" && b.status !== "confirmed" && (
-                          <LinkButton href={`/bookings/${b.id}`} variant="ghost" size="sm">
+                          <LinkButton href={`/bookings/${b.bookingNo}`} variant="ghost" size="sm">
                             View
                           </LinkButton>
                         )}

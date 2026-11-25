@@ -137,7 +137,7 @@ export default async function DashboardPage() {
           <div className="space-y-2 px-5 pb-5">
             {d.schedule.length === 0 && <p className="py-6 text-center text-sm text-muted">No sessions today.</p>}
             {d.schedule.map((b) => (
-              <Link key={b.id} href={`/bookings/${b.id}`} className="flex items-center gap-3 rounded-xl bg-white/55 p-3 transition hover:bg-white/80">
+              <Link key={b.id} href={`/bookings/${b.bookingNo}`} className="flex items-center gap-3 rounded-xl bg-white/55 p-3 transition hover:bg-white/80">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
                   {b.locationType === "hospital" ? <Hospital size={18} /> : <Home size={18} />}
                 </div>
@@ -212,7 +212,7 @@ export default async function DashboardPage() {
           <div className="divide-y divide-indigo-100/60 px-5 pb-4">
             {d.activity.length === 0 && <p className="py-6 text-center text-sm text-muted">No activity yet.</p>}
             {d.activity.map((a) => (
-              <Link key={a.id} href={`/bookings/${a.bookingId}`} className="flex items-center gap-3 py-2.5 hover:opacity-80">
+              <Link key={a.id} href={`/bookings/${a.bookingNo}`} className="flex items-center gap-3 py-2.5 hover:opacity-80">
                 <Avatar name={a.userName} size="sm" />
                 <div className="min-w-0 flex-1 text-sm">
                   <span className="font-medium">{a.userName}</span> <span className="text-muted">set</span>{" "}

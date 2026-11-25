@@ -94,6 +94,31 @@ body {
   }
 }
 
+/* Booking journey: milestones fade in one after another (delay set per step). */
+@keyframes journey-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.journey-step {
+  animation: journey-in 0.45s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .journey-step {
+    animation: none;
+  }
+}
+@media print {
+  .journey-step {
+    animation: none;
+  }
+}
+
 /* Thin, quiet scrollbars inside panels */
 .scroll-thin {
   scrollbar-width: thin;
@@ -113,6 +138,19 @@ body {
   }
   body {
     background: #fff;
+  }
+  /* Reports (and any glass page): plain white panels with a thin border. */
+  .glass,
+  .glass-strong {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+  /* Wide tables print in full instead of being cut off by their scroll box. */
+  .overflow-x-auto {
+    overflow: visible !important;
   }
 }
 
