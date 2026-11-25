@@ -92,7 +92,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
                       </div>
                     </Td>
                     <Td className="whitespace-nowrap">
-                      <Link href={`/bookings/${i.bookingId}`} className="hover:text-accent">
+                      <Link href={`/bookings/${i.bookingNo}`} className="hover:text-accent">
                         {i.bookingNo}
                       </Link>
                       <div className="text-xs text-muted">Session {niceDate(i.serviceDate)}</div>

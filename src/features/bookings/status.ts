@@ -73,6 +73,7 @@ export async function applyTransition(
     fromStatus: booking.status,
     toStatus: to,
     userId: user.id,
+    employeeId: action === "assign" ? (extra.employeeId ?? null) : null,
     note: note ?? null,
   });
 }

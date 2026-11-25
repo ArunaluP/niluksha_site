@@ -40,10 +40,12 @@ npm install
 | Screen | Who | What |
 |---|---|---|
 | Dashboard | everyone | Today's bookings, 7-day outlook, free caregivers, invoices waiting, recent activity |
+| Reports | everyone (managers: own branch; Director: branch filter) | Everything that happened in a day or date range: counts per event type, delivered / printed value, breakdown by branch and package, every event with the booking's current status. Print (all events, white page) and Download CSV |
+| Booking journey | everyone (managers: own branch) | Click a Reports row: a side panel (`?view=BK-…`) shows the booking's whole flow (booked → confirmed → assigned → delivered → invoice printed) with who / when / how long, plus detours (ignored with reason, reassigned from → to, unassigned). "Open full page" goes to the booking page with "← Back to Reports" |
 | Call List | Director, Call center | Today / tomorrow / any date: Confirm or Ignore (with reason), then Assign |
 | New Booking | Director, Call center | 3 steps: find or register customer → choose or add patient → session details |
 | Assignments | Director, Call center | Confirmed bookings needing an employee; reassign / unassign |
-| Bookings | everyone (managers: own branch) | Filter by status, dates, search; detail page with history and every workflow button |
+| Bookings | everyone (managers: own branch) | Filter by status, dates, search; booking page at `/bookings/BK-2026-00018` (old `/bookings/12` links redirect) with the journey, side cards and every workflow button |
 | Invoices | everyone (managers: view only) | Waiting / printed; white printable invoice, Print / Save PDF, Mark printed |
 | Customers | Director, Call center | Search, profile, patients, recent bookings |
 | Employees | Director edits; others view | Filters by type and branch, leave records, upcoming sessions |
@@ -76,7 +78,8 @@ into Postman (set the `adminEmail` / `adminPassword` collection variables to you
 ```
 src/
   features/<module>/     Business logic per module (service.ts): branches, users, hospitals,
-                         employees, customers, bookings (+ status.ts life cycle), invoices, dashboard
+                         employees, customers, bookings (+ status.ts life cycle), invoices, dashboard,
+                         reports (events.ts = the from→to event mapping, csv.ts)
   app/api/**/route.ts    REST endpoints — thin: validate input, call the service, return JSON
   proxy.ts               Route guard (Next 16's name for middleware). Cookie check only:
                          logged-out users -> /login, logged-in users skip /login.
@@ -157,6 +160,8 @@ the matching file in `database/migrations/`, run once, in order:
 | `005_email.sql` | Optional `email` for customers and employees. |
 | `006_ward_bed.sql` | Hospital bookings: `ward_room` is split into `ward_no` (required) and `bed_no` (optional); old text moves to `ward_no`. |
 | `007_packages.sql` | Care packages. The current session rate becomes the default package "Standard 24 hours"; existing bookings are linked to it; the old session-rate setting is removed. |
+| `008_report_index.sql` | Index `idx_logs_created` on `booking_status_logs.created_at` for the Reports page (no data changes). |
+| `009_log_employee.sql` | `booking_status_logs.employee_id`: which employee each assignment was for (shows reassignments as "from → to" on the booking journey). Backfills the latest assignment of each booking from its current employee; older reassignments stay "employee not recorded". |
 
 ```sql
 mysql> SOURCE D:/Niluksha_system/database/migrations/002_split_names.sql;

@@ -50,6 +50,12 @@ function client(name) {
     patch: (p, b) => call("PATCH", p, b),
     del: (p) => call("DELETE", p),
     raw: (method, p, text) => call(method, p, undefined, text),
+    /** GET a non-JSON response (CSV): status, headers and the raw text. */
+    text: async (p) => {
+      const res = await fetch(BASE + p, { headers: cookie ? { Cookie: cookie } : {}, redirect: "manual" });
+      // res.text() would drop a leading UTF-8 BOM; keep it so the CSV check can see it.
+      return { status: res.status, headers: res.headers, text: new TextDecoder("utf-8", { ignoreBOM: true }).decode(await res.arrayBuffer()) };
+    },
     login: (email, password) => call("POST", "/api/auth/login", { email, password }),
   };
 }
@@ -352,6 +358,112 @@ async function main() {
   expect("Mark printed again", await call.post(`/api/invoices/${invA.id}/mark-printed`), 409);
   const finalA = expect("Booking A after printing", await call.get(`/api/bookings/${bA.id}`), 200);
   check("A closed: invoice_printed", finalA?.status === "invoice_printed");
+
+  section("Reports (activity)");
+  // Everything above happened today. ONE row per booking = the last step it reached today
+  // (failed attempts write nothing):
+  //   A: new → confirmed → assigned → reassigned → unassigned → assigned → delivered → invoice printed
+  //   B: new → confirmed → assigned        C: new → confirmed → assigned → delivered
+  //   D: new → confirmed → assigned → ignored
+  const rep = expect("Activity report (today)", await admin.get("/api/reports/activity"), 200);
+  const want = { created: 0, confirmed: 0, assigned: 1, reassigned: 0, unassigned: 0, ignored: 1, delivered: 1, invoice_printed: 1 };
+  check("period defaults to today", rep?.period?.from === TODAY && rep?.period?.to === TODAY, rep?.period);
+  check("counts: each booking once, by its last step", Object.entries(want).every(([k, n]) => rep?.counts?.[k] === n), rep?.counts);
+  check("one row per booking (4)", rep?.total === 4 && new Set(rep.events.map((e) => e.bookingId)).size === 4, rep?.total);
+  const deliveredRates = Number(finalA.rate) + Number(bC.rate);
+  check("delivered value = sum of delivered rates", Number(rep?.money?.delivered?.value) === deliveredRates && rep?.money?.delivered?.count === 2, rep?.money);
+  check("invoices printed value = invoice A", Number(rep?.money?.invoicesPrinted?.value) === Number(full.amount) && rep?.money?.invoicesPrinted?.count === 1, rep?.money);
+  check("by branch: 2 sessions at KDW", rep?.byBranch?.length === 1 && rep.byBranch[0].branchId === kdw.id && rep.byBranch[0].sessions === 2, rep?.byBranch);
+  check("by package: Standard 24 hours", rep?.byPackage?.[0]?.packageName === "Standard 24 hours" && rep.byPackage[0].durationHours === 24, rep?.byPackage);
+  const evA = rep?.events?.filter((e) => e.bookingId === bA.id) ?? [];
+  check("A: one row, last step invoice printed, status invoice_printed", evA.length === 1 && evA[0].event === "invoice_printed" && evA[0].status === "invoice_printed", evA);
+  check(
+    "A's trail lists all 8 steps of today",
+    evA[0]?.steps?.join(",") === "created,confirmed,assigned,reassigned,unassigned,assigned,delivered,invoice_printed",
+    evA[0]?.steps,
+  );
+  check("ignore reason shown as note", rep?.events?.some((e) => e.bookingId === bD.id && e.event === "ignored" && e.note === "Customer cancelled"));
+  const repDel = expect("event=delivered", await admin.get("/api/reports/activity?event=delivered"), 200);
+  check("only bookings whose last step is delivered (C)", repDel?.total === 1 && repDel.events[0].bookingId === bC.id && repDel.events[0].event === "delivered", repDel?.events);
+  const repAs = expect("event=assigned", await admin.get("/api/reports/activity?event=assigned"), 200);
+  check("assigned filter: B only", repAs?.total === 1 && repAs.events[0].bookingId === bB.id, repAs?.events);
+  const repPage = expect("Paging", await admin.get("/api/reports/activity?pageSize=3&page=2"), 200);
+  check("page 2 of 3 has the 4th booking", repPage?.events?.length === 1 && repPage.total === 4);
+  const repBr = expect("Director branch filter (GMP)", await admin.get(`/api/reports/activity?branchId=${gmp.id}`), 200);
+  check("no GMP events (D was released, nothing is at GMP now)", repBr?.total === 0, repBr?.total);
+  expect("from after to", await admin.get(`/api/reports/activity?from=${TODAY}&to=${YESTERDAY}`), 400);
+  expect("Future date", await admin.get(`/api/reports/activity?from=${TODAY}&to=${TOMORROW}`), 400);
+  expect("Range over 366 days", await admin.get(`/api/reports/activity?from=${plus(-400)}&to=${TODAY}`), 400);
+  expect("Unknown event type", await admin.get("/api/reports/activity?event=deleted"), 400);
+  expect("Call center can see reports", await call.get("/api/reports/activity"), 200);
+  expect("No login: reports", await anon.get("/api/reports/activity"), 401);
+  // KDW manager: A, B and C are assigned to KDW now; D (released) is hidden.
+  const repM = expect("Manager report", await mgr.get(`/api/reports/activity?pageSize=100&branchId=${gmp.id}`), 200);
+  check("manager sees only KDW bookings (branchId param ignored)", repM?.total === 3 && repM.events.every((e) => e.branchId === kdw.id), repM?.total);
+  check("manager doesn't see D", !repM?.events?.some((e) => e.bookingId === bD.id));
+  check(
+    "manager counts own branch only",
+    repM?.counts?.assigned === 1 && repM?.counts?.delivered === 1 && repM?.counts?.invoice_printed === 1 && repM?.counts?.ignored === 0,
+    repM?.counts,
+  );
+  check("manager money: both KDW deliveries", Number(repM?.money?.delivered?.value) === deliveredRates, repM?.money);
+  const csv = await admin.text("/api/reports/activity/csv");
+  check("CSV → 200", csv.status === 200, csv.status);
+  check("CSV content-type text/csv", csv.headers.get("content-type")?.startsWith("text/csv"), csv.headers.get("content-type"));
+  check("CSV file name", csv.headers.get("content-disposition")?.includes(`activity_${TODAY}_to_${TODAY}.csv`), csv.headers.get("content-disposition"));
+  const csvLines = csv.text.replace(/^﻿/, "").trim().split(/\r?\n/);
+  check("CSV has UTF-8 BOM + header row", csv.text.startsWith("﻿Date,Time,Event,Booking no,Customer"), csv.text.slice(0, 60));
+  check("CSV has one row per booking (4)", csvLines.length === 5, csvLines.length);
+  check("CSV shows A's steps", csvLines.some((l) => l.includes("New → Confirmed → Assigned → Reassigned")));
+  const csvM = await mgr.text("/api/reports/activity/csv");
+  check("manager CSV has only own branch (3 rows)", csvM.status === 200 && csvM.text.trim().split(/\r?\n/).length === 4);
+  expect("CSV bad dates → 400", await admin.get(`/api/reports/activity/csv?from=${TOMORROW}`), 400);
+
+  section("Booking journey");
+  // A (all today): created → confirmed → assigned (Nimali) → reassigned (Sunil) → unassigned
+  //                → assigned (Nimali) → delivered → invoice printed  = 8 status changes
+  const MS = "booked,confirmed,assigned,delivered,invoice_printed";
+  const jA = expect("Journey of A", await admin.get(`/api/bookings/${bA.id}/journey`), 200);
+  check("5 milestones in order", jA?.milestones?.map((m) => m.key).join(",") === MS, jA?.milestones?.map((m) => m.key));
+  check("A: every milestone done", jA?.milestones?.every((m) => m.state === "done" && m.at && m.byUser), jA?.milestones);
+  check("A: one event per status change (8)", jA?.events?.length === 8, jA?.events?.map((e) => e.kind));
+  check(
+    "A: event kinds in order",
+    jA?.events?.map((e) => e.kind).join(",") === "created,confirmed,assigned,reassigned,unassigned,assigned,delivered,invoice_printed",
+    jA?.events?.map((e) => e.kind),
+  );
+  check("A: stats.bookingToDelivery set", typeof jA?.stats?.bookingToDelivery === "number", jA?.stats);
+  const asg = jA?.events?.find((e) => e.kind === "assigned");
+  check("assigned event has the employee", asg?.employee?.name === "Nimali Perera" && asg.employee.empNo === e1.empNo && asg.employee.branchName === "Kadawatha", asg);
+  const rea = jA?.events?.find((e) => e.kind === "reassigned");
+  check("reassigned event: from Nimali → to Sunil", rea?.previousEmployee?.name === "Nimali Perera" && rea?.employee?.name === "Sunil Fernando", rea);
+  check("unassigned event names who was removed", jA?.events?.find((e) => e.kind === "unassigned")?.employee?.name === "Sunil Fernando");
+  check("A: invoice with print count", jA?.invoice?.invoiceNo === full.invoiceNo && jA.invoice.printCount === 1, jA?.invoice);
+  check("A: assignment = Nimali", jA?.assignment?.employeeName === "Nimali Perera" && jA.assignment.branchName === "Kadawatha", jA?.assignment);
+  const jByNo = expect("Journey by booking number", await admin.get(`/api/bookings/${bA.bookingNo}/journey`), 200);
+  check("same booking", jByNo?.booking?.id === bA.id);
+  const jB = expect("Journey of B (assigned)", await admin.get(`/api/bookings/${bB.id}/journey`), 200);
+  check("B: delivered is current, invoice printed upcoming", jB?.milestones?.map((m) => m.state).join(",") === "done,done,done,current,upcoming", jB?.milestones?.map((m) => m.state));
+  check("B: bookingToDelivery null (not delivered)", jB?.stats?.bookingToDelivery === null, jB?.stats);
+  const jD = expect("Journey of D (ignored)", await admin.get(`/api/bookings/${bD.id}/journey`), 200);
+  check("D: later milestones skipped", jD?.milestones?.map((m) => m.state).join(",") === "done,done,done,skipped,skipped", jD?.milestones?.map((m) => m.state));
+  check("D: ignored stop with reason", jD?.ignored?.note === "Customer cancelled", jD?.ignored);
+  // A booking at GMP (another branch for the KDW manager).
+  const bG = expect("G: tomorrow, for another branch", await call.post("/api/bookings", { customerId: cust2.id, patientId: p2.id, serviceDate: TOMORROW, locationType: "home", serviceAddress: "5 Lake Rd" }), 201);
+  await call.post(`/api/bookings/${bG.id}/confirm`);
+  expect("Assign G → employee 3 (GMP)", await call.post(`/api/bookings/${bG.id}/assign`, { employeeId: e3.id }), 200);
+  expect("Manager: own-branch journey (A)", await mgr.get(`/api/bookings/${bA.id}/journey`), 200);
+  expect("Manager: other branch's journey (G)", await mgr.get(`/api/bookings/${bG.id}/journey`), 404);
+  expect("Manager: other branch's journey by booking no", await mgr.get(`/api/bookings/${bG.bookingNo}/journey`), 404);
+  expect("Journey: unknown booking", await admin.get("/api/bookings/BK-1999-99999/journey"), 404);
+  expect("Journey: bad ref", await admin.get("/api/bookings/abc/journey"), 404);
+  expect("No login: journey", await anon.get(`/api/bookings/${bA.id}/journey`), 401);
+  // Booking page URLs: /bookings/<id> redirects to /bookings/BK-… (query string kept).
+  const old = await admin.text(`/bookings/${bA.id}?from=reports&back=%2Freports`);
+  const loc = old.headers.get("location") ?? "";
+  check("old /bookings/:id link redirects to /bookings/BK-…", [307, 308].includes(old.status) && loc.includes(`/bookings/${bA.bookingNo}?from=reports&back=%2Freports`), { status: old.status, loc });
+  const pageA = await admin.text(`/bookings/${bA.bookingNo}`);
+  check("/bookings/BK-… → 200", pageA.status === 200, pageA.status);
 
   section("Admin dashboard + concurrency");
   const ad = expect("Admin dashboard", await admin.get("/api/dashboard"), 200);

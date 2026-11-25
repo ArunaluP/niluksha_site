@@ -632,7 +632,7 @@ export function BookingWizard({
             <h1 className="mt-5 text-2xl font-semibold">Booking {done.bookingNo} recorded</h1>
             <p className="mt-1 text-sm text-muted">It&apos;s on the call list as Pending for {niceDate(ses.serviceDate)}.</p>
             <div className="mt-8 flex flex-wrap justify-center gap-2">
-              <LinkButton href={`/bookings/${done.id}`} variant="secondary">
+              <LinkButton href={`/bookings/${done.bookingNo}`} variant="secondary">
                 View booking
               </LinkButton>
               <Button variant="secondary" onClick={() => reset(true)}>

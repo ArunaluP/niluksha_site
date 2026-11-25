@@ -183,7 +183,7 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
                 {c.recentBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-white/50">
                     <Td className="whitespace-nowrap">
-                      <Link href={`/bookings/${b.id}`} className="font-medium text-accent hover:underline">
+                      <Link href={`/bookings/${b.bookingNo}`} className="font-medium text-accent hover:underline">
                         {b.bookingNo}
                       </Link>
                       <div className="text-xs text-muted">{niceDate(b.serviceDate)}</div>

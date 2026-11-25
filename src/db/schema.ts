@@ -310,10 +310,16 @@ export const bookingStatusLogs = mysqlTable(
     fromStatus: mysqlEnum("from_status", BOOKING_STATUSES),
     toStatus: mysqlEnum("to_status", BOOKING_STATUSES).notNull(),
     userId: fk("user_id").notNull(),
+    /** "-> assigned" logs: the employee assigned (NULL for older reassignments). */
+    employeeId: fk("employee_id"),
     note: varchar("note", { length: 255 }),
     createdAt: createdAt(),
   },
-  (t) => [index("idx_logs_booking").on(t.bookingId, t.createdAt)],
+  (t) => [
+    index("idx_logs_booking").on(t.bookingId, t.createdAt),
+    index("idx_logs_created").on(t.createdAt),
+    index("idx_logs_employee").on(t.employeeId),
+  ],
 );
 
 // ---------------------------------------------------------------------------

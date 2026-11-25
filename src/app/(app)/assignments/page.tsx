@@ -86,7 +86,7 @@ export default async function AssignmentsPage({ searchParams }: PageProps<"/assi
                   <tr key={b.id} className="transition hover:bg-white/50">
                     <Td className="whitespace-nowrap">
                       <div className="font-semibold">{niceTime(b.startTime)}</div>
-                      <Link href={`/bookings/${b.id}`} className="text-xs text-accent hover:underline">
+                      <Link href={`/bookings/${b.bookingNo}`} className="text-xs text-accent hover:underline">
                         {b.bookingNo}
                       </Link>
                     </Td>
