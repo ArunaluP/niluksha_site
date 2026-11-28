@@ -1,14 +1,14 @@
 "use client";
 
-import { ArrowLeft, CheckCheck, Printer } from "lucide-react";
+import { ArrowLeft, CheckCheck, FileDown, Printer } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 import { markInvoicePrintedAction, recordPrintAction } from "@/app/(app)/_actions/bookings";
-import { Button, StatusBadge } from "@/components/ui";
+import { Button, buttonClass, StatusBadge } from "@/components/ui";
 
-export function InvoiceToolbar({ id, invoiceNo, status, canPrint }: { id: number; invoiceNo: string; status: string; canPrint: boolean }) {
+export function InvoiceToolbar({ id, invoiceNo, status, canPrint, whatsapp }: { id: number; invoiceNo: string; status: string; canPrint: boolean; whatsapp?: ReactNode }) {
   const [pending, start] = useTransition();
   const router = useRouter();
 
@@ -20,8 +20,12 @@ export function InvoiceToolbar({ id, invoiceNo, status, canPrint }: { id: number
         </Link>
         <StatusBadge status={status} />
       </div>
-      {canPrint && (
-        <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
+        <a href={`/api/invoices/${id}/pdf`} className={buttonClass("secondary", "md")} title="Download the invoice as a PDF file">
+          <FileDown size={16} /> PDF
+        </a>
+        {canPrint && (
+          <>
           <Button
             variant="secondary"
             onClick={() =>
@@ -52,8 +56,10 @@ export function InvoiceToolbar({ id, invoiceNo, status, canPrint }: { id: number
               <CheckCheck size={16} /> Mark printed
             </Button>
           )}
-        </div>
-      )}
+          {status === "printed" && whatsapp}
+          </>
+        )}
+      </div>
     </div>
   );
 }

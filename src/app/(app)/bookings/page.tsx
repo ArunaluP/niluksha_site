@@ -1,7 +1,7 @@
 import { CalendarPlus, ClipboardList, Search } from "lucide-react";
 import Link from "next/link";
 import { Pager, Tabs, withParams } from "@/components/app/list-tools";
-import { Avatar, Button, Card, EmptyState, LinkButton, money, niceDate, niceTime, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Avatar, Button, Card, DaysTag, EmptyState, LinkButton, money, nicePeriod, niceTime, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { BookingListQuery, listBookings } from "@/features/bookings/service";
 import { requirePermission } from "@/lib/dal";
 import { hasPermission } from "@/lib/permissions";
@@ -21,6 +21,7 @@ type Row = {
   id: number;
   bookingNo: string;
   serviceDate: string;
+  days: number;
   startTime: string;
   status: string;
   rate: string;
@@ -46,7 +47,7 @@ export default async function BookingsPage({ searchParams }: PageProps<"/booking
     <div>
       <PageHeader
         title="Bookings"
-        subtitle={user.role === "branch_manager" ? "Bookings assigned to your branch" : "All care sessions, every status"}
+        subtitle={user.role === "branch_manager" ? "New bookings (no branch yet) and your branch's bookings" : "All care sessions, every status"}
         actions={
           hasPermission(user, "createBooking") && (
             <LinkButton href="/bookings/new">
@@ -101,7 +102,8 @@ export default async function BookingsPage({ searchParams }: PageProps<"/booking
                         {b.bookingNo}
                       </Link>
                       <div className="text-xs text-muted">
-                        {niceDate(b.serviceDate)} · {niceTime(b.startTime)}
+                        {nicePeriod(b.serviceDate, b.days)} · {niceTime(b.startTime)}
+                        <DaysTag days={b.days} />
                       </div>
                     </Td>
                     <Td className="min-w-[200px]">

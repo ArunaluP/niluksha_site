@@ -3,7 +3,7 @@ import { hospitalPlace } from "@/lib/lk-rules";
 import Link from "next/link";
 import * as z from "zod";
 import { AssignButton, ConfirmButton, IgnoreButton } from "@/components/app/booking-actions";
-import { Avatar, Card, cn, EmptyState, LinkButton, niceDate, niceTime, PageHeader, STATUS_DOT, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Avatar, Card, cn, DaysTag, EmptyState, LinkButton, niceDate, niceTime, PageHeader, STATUS_DOT, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { getCallList } from "@/features/bookings/service";
 import { requirePermission } from "@/lib/dal";
 import { addDays, today } from "@/lib/dates";
@@ -26,16 +26,16 @@ const STATUS_ROWS = [
 ] as const;
 
 export default async function CallListPage({ searchParams }: PageProps<"/call-list">) {
-  await requirePermission("useCallList");
+  const user = await requirePermission("useCallList");
   const q = Query.parse(await searchParams);
   const t = today();
   const tm = addDays(t, 1);
   const date = q.date ?? t;
 
   const [list, todayList, tomorrowList] = await Promise.all([
-    getCallList({ date, view: q.view }),
-    getCallList({ date: t, view: "pending" }),
-    getCallList({ date: tm, view: "pending" }),
+    getCallList({ date, view: q.view }, user),
+    getCallList({ date: t, view: "pending" }, user),
+    getCallList({ date: tm, view: "pending" }, user),
   ]);
   const c = list.counts;
   const doneCount = Object.entries(c).reduce((a, [k, v]) => (k === "pending" ? a : a + v), 0);
@@ -136,7 +136,10 @@ export default async function CallListPage({ searchParams }: PageProps<"/call-li
                 {list.items.map((b) => (
                   <tr key={b.id} className="transition hover:bg-white/50">
                     <Td className="whitespace-nowrap">
-                      <div className="font-semibold">{niceTime(b.startTime)}</div>
+                      <div className="font-semibold">
+                        {niceTime(b.startTime)}
+                        <DaysTag days={b.days} />
+                      </div>
                       <Link href={`/bookings/${b.bookingNo}`} className="text-xs text-accent hover:underline">
                         {b.bookingNo}
                       </Link>

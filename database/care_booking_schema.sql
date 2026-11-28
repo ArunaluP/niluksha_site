@@ -7,6 +7,10 @@ CREATE DATABASE IF NOT EXISTS care_booking
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE care_booking;
 
+-- Every DATETIME is stored in UTC (the app shows it in Sri Lanka time).
+-- Times MySQL fills in itself (CURRENT_TIMESTAMP) follow this session setting.
+SET time_zone = '+00:00';
+
 -- ---------------------------------------------------------------------
 -- 1. Branches
 -- ---------------------------------------------------------------------
@@ -52,6 +56,7 @@ ALTER TABLE branches
 CREATE TABLE employees (
   id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   emp_no          VARCHAR(20)  NOT NULL,
+  file_no         VARCHAR(30)  NULL,                  -- employee number on the paper registration form
   branch_id       INT UNSIGNED NOT NULL,
   first_name      VARCHAR(60)  NOT NULL,
   middle_name     VARCHAR(80)  NULL,
@@ -64,6 +69,23 @@ CREATE TABLE employees (
   alt_phone       VARCHAR(20)  NULL,
   email           VARCHAR(160) NULL,
   address         VARCHAR(255) NULL,
+  gn_division     VARCHAR(100) NULL,                  -- Grama Niladhari division
+  district        VARCHAR(30)  NULL,
+  nearest_police  VARCHAR(100) NULL,
+  nearest_post_office VARCHAR(100) NULL,
+  guardian_name   VARCHAR(160) NULL,
+  guardian_relationship VARCHAR(60) NULL,
+  guardian_address VARCHAR(255) NULL,
+  guardian_phone  VARCHAR(20)  NULL,
+  doc_gn_certificate        BOOLEAN NOT NULL DEFAULT FALSE, -- documents handed over
+  doc_nic_copy              BOOLEAN NOT NULL DEFAULT FALSE,
+  doc_police_certificate    BOOLEAN NOT NULL DEFAULT FALSE,
+  doc_character_certificate BOOLEAN NOT NULL DEFAULT FALSE,
+  doc_birth_certificate     BOOLEAN NOT NULL DEFAULT FALSE,
+  heard_from      ENUM('poster','leaflet','newspaper','facebook','messenger','office','employee') NULL,
+  referred_by     INT UNSIGNED NULL,                  -- employee who referred them (heard_from = employee)
+  rules_agreed_at DATETIME     NULL,                  -- rules & declaration accepted
+  rules_agreed_by INT UNSIGNED NULL,                  -- staff login that recorded it
   designation     VARCHAR(60)  NOT NULL DEFAULT 'Caregiver',
   qualifications  TEXT         NULL,
   join_date       DATE         NULL,
@@ -73,8 +95,21 @@ CREATE TABLE employees (
   updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_employees_emp_no (emp_no),
   UNIQUE KEY uq_employees_nic (nic),
+  UNIQUE KEY uq_employees_file_no (file_no),
   KEY idx_employees_branch_status (branch_id, status),
-  CONSTRAINT fk_employees_branch FOREIGN KEY (branch_id) REFERENCES branches(id)
+  KEY idx_employees_referred_by (referred_by),
+  CONSTRAINT fk_employees_branch FOREIGN KEY (branch_id) REFERENCES branches(id),
+  CONSTRAINT fk_employees_referred_by FOREIGN KEY (referred_by) REFERENCES employees(id) ON DELETE SET NULL,
+  CONSTRAINT fk_employees_rules_agreed_by FOREIGN KEY (rules_agreed_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- One webcam photo per employee (JPEG). Kept in MySQL so it is in every backup.
+CREATE TABLE employee_photos (
+  employee_id INT UNSIGNED NOT NULL PRIMARY KEY,
+  mime        VARCHAR(20)  NOT NULL,
+  data        MEDIUMBLOB   NOT NULL,
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_employee_photos_employee FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
@@ -125,6 +160,9 @@ CREATE TABLE customers (
   dob          DATE         NULL,               -- filled from the NIC when one is given
   phone        VARCHAR(20)  NOT NULL,
   alt_phone    VARCHAR(20)  NULL,
+  phone_whatsapp     TINYINT(1)  NOT NULL DEFAULT 1, -- main phone is on WhatsApp (invoices are sent here first)
+  alt_phone_whatsapp TINYINT(1)  NOT NULL DEFAULT 1, -- other phone is on WhatsApp
+  whatsapp_phone     VARCHAR(20) NULL,               -- only when neither phone is on WhatsApp (optional)
   email        VARCHAR(160) NULL,
   address      VARCHAR(255) NULL,
   city         VARCHAR(80)  NULL,
@@ -190,7 +228,9 @@ CREATE TABLE bookings (
   booking_no       VARCHAR(20)  NOT NULL,
   customer_id      INT UNSIGNED NOT NULL,
   patient_id       INT UNSIGNED NOT NULL,
-  service_date     DATE         NOT NULL,
+  service_date     DATE         NOT NULL,             -- first day
+  days             TINYINT UNSIGNED NOT NULL DEFAULT 1, -- number of days in a row (1-30), same caregiver
+  end_date         DATE GENERATED ALWAYS AS (service_date + INTERVAL (days - 1) DAY) STORED, -- last day
   start_time       TIME         NOT NULL DEFAULT '08:00:00',
   package_id       INT UNSIGNED NULL,             -- the package chosen (NULL only for very old rows)
   package_name     VARCHAR(80)  NULL,             -- copied from the package (invoice text)
@@ -231,6 +271,7 @@ CREATE TABLE bookings (
   KEY idx_bookings_customer_date (customer_id, service_date),
   KEY idx_bookings_patient (patient_id),
   KEY idx_bookings_employee_date (employee_id, service_date),
+  KEY idx_bookings_employee_range (employee_id, service_date, end_date), -- caregiver busy on any day of a booking
   KEY idx_bookings_branch_date (branch_id, service_date),
   KEY idx_bookings_hospital (hospital_id),
   KEY idx_bookings_package (package_id),
@@ -326,6 +367,85 @@ CREATE TABLE sequences (
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------------
+-- 13. Google Drive connection (one row: the account the Director connected)
+--     The refresh token is AES-256-GCM encrypted by the app; never shown.
+-- ---------------------------------------------------------------------
+CREATE TABLE google_drive_connection (
+  id                 TINYINT UNSIGNED NOT NULL PRIMARY KEY DEFAULT 1, -- always 1
+  account_email      VARCHAR(160) NOT NULL,
+  refresh_token_enc  TEXT         NOT NULL,
+  folder_id          VARCHAR(120) NULL,         -- where exports go (from the pasted link)
+  folder_name        VARCHAR(255) NULL,
+  folder_link        VARCHAR(500) NULL,
+  last_error         VARCHAR(255) NULL,         -- e.g. access removed in Google; shown in Settings
+  connected_by       INT UNSIGNED NOT NULL,
+  connected_at       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_gdrive_user FOREIGN KEY (connected_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 14. Export log (who exported which report, and where it went)
+-- ---------------------------------------------------------------------
+CREATE TABLE export_logs (
+  id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id        INT UNSIGNED NOT NULL,
+  report         ENUM('activity','employees','employee') NOT NULL,
+  period_from    DATE         NOT NULL,
+  period_to      DATE         NOT NULL,
+  branch_id      INT UNSIGNED NULL,
+  subject        VARCHAR(40)  NULL,             -- e.g. EMP-0007 for one employee
+  file_name      VARCHAR(255) NOT NULL,
+  rows_count     INT UNSIGNED NOT NULL DEFAULT 0,
+  destination    ENUM('download','drive','both') NOT NULL,
+  drive_file_id  VARCHAR(120) NULL,
+  drive_link     VARCHAR(500) NULL,
+  status         ENUM('ok','failed') NOT NULL DEFAULT 'ok',
+  error          VARCHAR(255) NULL,
+  created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_exports_created (created_at),
+  KEY idx_exports_user (user_id),
+  CONSTRAINT fk_exports_user   FOREIGN KEY (user_id)   REFERENCES users(id),
+  CONSTRAINT fk_exports_branch FOREIGN KEY (branch_id) REFERENCES branches(id)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
+-- 15. Invoice links (the 7-day link sent on WhatsApp to view / download the invoice PDF)
+-- ---------------------------------------------------------------------
+CREATE TABLE invoice_links (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  invoice_id      INT UNSIGNED NOT NULL,
+  token_hash      CHAR(64)     NOT NULL,          -- SHA-256 of the secret in the link (the link itself is never stored)
+  expires_at      DATETIME     NOT NULL,          -- 7 days after it was made
+  disabled_at     DATETIME     NULL,              -- staff stopped it ("Disable links")
+  views           INT UNSIGNED NOT NULL DEFAULT 0,
+  last_viewed_at  DATETIME     NULL,
+  created_by      INT UNSIGNED NOT NULL,
+  created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_invoice_links_token (token_hash),
+  KEY idx_invoice_links_invoice (invoice_id),
+  CONSTRAINT fk_invoice_links_invoice FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+  CONSTRAINT fk_invoice_links_user    FOREIGN KEY (created_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+-- Secret 7-day links to a booking confirmation, sent to the customer on WhatsApp.
+CREATE TABLE booking_links (
+  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  booking_id      INT UNSIGNED NOT NULL,
+  token_hash      CHAR(64)     NOT NULL,          -- SHA-256 of the secret in the link (the link itself is never stored)
+  expires_at      DATETIME     NOT NULL,          -- 7 days after it was made
+  disabled_at     DATETIME     NULL,              -- staff stopped it ("Disable links")
+  views           INT UNSIGNED NOT NULL DEFAULT 0,
+  last_viewed_at  DATETIME     NULL,
+  created_by      INT UNSIGNED NOT NULL,
+  created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_booking_links_token (token_hash),
+  KEY idx_booking_links_booking (booking_id),
+  CONSTRAINT fk_booking_links_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+  CONSTRAINT fk_booking_links_user    FOREIGN KEY (created_by) REFERENCES users(id)
+) ENGINE=InnoDB;
+
+-- ---------------------------------------------------------------------
 -- Seed data
 -- ---------------------------------------------------------------------
 INSERT INTO packages (name, duration_hours, price, description, is_default) VALUES
@@ -336,7 +456,8 @@ INSERT INTO settings (setting_key, value) VALUES
   ('booking_prefix',   'BK'),
   ('company_name',     'Company name here'),
   ('company_address',  'Company address here'),
-  ('company_phone',    '000 000 0000');
+  ('company_phone',    '000 000 0000'),
+  ('db_time_zone',     'UTC')  -- marker: times are stored in UTC (migration 011);
 
 -- ---------------------------------------------------------------------
 -- Availability query (free employees for a date, all branches)

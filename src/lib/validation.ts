@@ -1,5 +1,5 @@
 import * as z from "zod";
-import { checkAddress, checkDob, checkWardBed, checkEmail, normalizeEmail, checkRelationshipOther, checkCity, checkName, checkNamePart, NAME_LIMITS, normalizePhone, parseNic, PHONE_ERROR, tidy } from "./lk-rules";
+import { checkAddress, checkDob, checkWardBed, checkEmail, normalizeEmail, checkRelationshipOther, checkCity, checkName, checkNamePart, NAME_LIMITS, normalizeMobile, normalizePhone, parseNic, PHONE_ERROR, tidy, WHATSAPP_ERROR } from "./lk-rules";
 
 /** Reusable Zod pieces so every module validates the same way. */
 
@@ -83,6 +83,20 @@ export const optCity = z.preprocess(emptyToUndef, ruled(checkCity).optional());
 export const nullableCity = z.preprocess(emptyToNull, ruled(checkCity).nullable().optional());
 export const optAddress = z.preprocess(emptyToUndef, ruled(checkAddress).optional());
 export const nullableAddress = z.preprocess(emptyToNull, ruled(checkAddress).nullable().optional());
+/** WhatsApp number: a Sri Lankan mobile (07X), stored as 0XXXXXXXXX. */
+export const mobile = z
+  .string()
+  .trim()
+  .transform((v, ctx) => {
+    const n = normalizeMobile(v);
+    if (!n) {
+      ctx.addIssue({ code: "custom", message: WHATSAPP_ERROR });
+      return z.NEVER;
+    }
+    return n;
+  });
+export const optMobile = z.preprocess(emptyToUndef, mobile.optional());
+export const nullableMobile = z.preprocess(emptyToNull, mobile.nullable().optional());
 export const optPhone = z.preprocess(emptyToUndef, phone.optional());
 export const nullablePhone = z.preprocess(emptyToNull, phone.nullable().optional());
 export const optNic = z.preprocess(emptyToUndef, nic.optional());

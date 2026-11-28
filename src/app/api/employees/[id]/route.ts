@@ -6,7 +6,7 @@ export const GET = api<{ id: string }>({ permission: "viewMasterData" }, async (
   getEmployeeDetail(toId(params.id, "Employee"), user),
 );
 
-/** PATCH /api/employees/:id   (any field, plus status: active|inactive) */
+/** PATCH /api/employees/:id   (any field, plus status: active|inactive; photo: null removes it; rulesAgreed: false clears it) */
 export const PATCH = api<{ id: string }>({ permission: "manageEmployees" }, async ({ req, params, user }) =>
   updateEmployee(toId(params.id, "Employee"), await readBody(req, EmployeeUpdateSchema), user),
 );

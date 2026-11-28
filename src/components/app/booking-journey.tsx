@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
-import { Avatar, Card, CardHeader, cn, money, niceDate, niceTime, StatusBadge } from "@/components/ui";
+import { Avatar, Card, CardHeader, cn, dayCount, money, nicePeriod, niceTime, StatusBadge } from "@/components/ui";
 import type { BookingJourney, JourneyEmployee, JourneyEvent, MilestoneState } from "@/features/bookings/journey";
 import type { EventKey } from "@/features/reports/events";
 import { hospitalPlace, relationshipLabel } from "@/lib/lk-rules";
@@ -227,11 +227,20 @@ function Header({ j, variant, actions }: { j: BookingJourney; variant: Variant; 
         </p>
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
           <CalendarClock size={14} className="text-accent" />
-          {niceDate(b.serviceDate)} · {niceTime(b.startTime)} – {endTime(b.startTime, b.durationHours)} · {b.durationHours} h
+          {nicePeriod(b.serviceDate, b.days)}
+          {b.days > 1 && <span className="font-medium text-ink/90">({dayCount(b.days)})</span>} · {niceTime(b.startTime)} – {endTime(b.startTime, b.durationHours)} · {b.durationHours} h
+          {b.days > 1 ? " each day" : ""}
         </p>
         <p className="flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
           <FileText size={14} className="text-accent" />
-          {b.packageName ?? "Package"} · <span className="font-medium text-ink/90">{money(b.rate)}</span>
+          {b.packageName ?? "Package"} ·{" "}
+          {b.days > 1 ? (
+            <>
+              {money(b.rate)} × {b.days} = <span className="font-medium text-ink/90">{money(Number(b.rate) * b.days)}</span>
+            </>
+          ) : (
+            <span className="font-medium text-ink/90">{money(b.rate)}</span>
+          )}
         </p>
       </div>
       {actions && <div className="no-print flex flex-wrap gap-2">{actions}</div>}

@@ -16,9 +16,9 @@ import {
   type Booking,
 } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
-import { addDays, today } from "@/lib/dates";
+import { addDays, endDateOf, MAX_BOOKING_DAYS, today } from "@/lib/dates";
 import { AppError, ValidationError, ConflictError, ForbiddenError, NotFoundError } from "@/lib/errors";
-import { branchScope, canAccessBranch } from "@/lib/permissions";
+import { assignableBranch, bookingScope, canAccessBooking } from "@/lib/permissions";
 import { nextNumber } from "@/lib/sequences";
 import { id, isoDate, nullableBedNo, nullableText, nullableWardNo, optBedNo, optText, optWardNo, pageParams, pagination, time, type Paged } from "@/lib/validation";
 import { assertEmployeeCanWork, listAvailableEmployees } from "../employees/service";
@@ -26,6 +26,12 @@ import { packageForBooking } from "../packages/service";
 import { applyTransition, lockBooking } from "./status";
 
 // ======================================================================= schemas
+const bookingDays = z.coerce
+  .number({ error: "Enter the number of days." })
+  .int({ error: "Days must be a whole number." })
+  .min(1, { error: "At least 1 day." })
+  .max(MAX_BOOKING_DAYS, { error: `At most ${MAX_BOOKING_DAYS} days per booking.` });
+
 const locationFields = {
   locationType: z.enum(["home", "hospital"], { error: "Location must be home or hospital." }),
   hospitalId: id.nullable().optional(),
@@ -39,6 +45,8 @@ export const BookingCreateSchema = z
     customerId: id,
     patientId: id,
     serviceDate: isoDate,
+    /** Days in a row from serviceDate (same caregiver). Invoice = package price x days. */
+    days: bookingDays.default(1),
     startTime: time.optional(),
     /** Leave out to use the default package. */
     packageId: id.optional(),
@@ -53,6 +61,8 @@ export const BookingCreateSchema = z
 export const BookingUpdateSchema = z.object({
   patientId: id.optional(),
   serviceDate: isoDate.optional(),
+  /** Can also be changed after assignment (until delivered). */
+  days: bookingDays.optional(),
   startTime: time.optional(),
   packageId: id.optional(),
   locationType: locationFields.locationType.optional(),
@@ -94,6 +104,8 @@ const listColumns = {
   id: bookings.id,
   bookingNo: bookings.bookingNo,
   serviceDate: bookings.serviceDate,
+  days: bookings.days,
+  endDate: bookings.endDate,
   startTime: bookings.startTime,
   packageId: bookings.packageId,
   packageName: bookings.packageName,
@@ -136,9 +148,10 @@ function baseBookingQuery() {
 }
 
 export async function listBookings(q: z.infer<typeof BookingListQuery>, user: CurrentUser): Promise<Paged<unknown>> {
-  const where: (SQL | undefined)[] = [branchScope(user, bookings.branchId)];
-  if (q.date) where.push(eq(bookings.serviceDate, q.date));
-  if (q.from) where.push(gte(bookings.serviceDate, q.from));
+  const where: (SQL | undefined)[] = [bookingScope(user, bookings.branchId)];
+  // Date filters match a booking on any of its days (service_date … end_date).
+  if (q.date) where.push(lte(bookings.serviceDate, q.date), gte(bookings.endDate, q.date));
+  if (q.from) where.push(gte(bookings.endDate, q.from));
   if (q.to) where.push(lte(bookings.serviceDate, q.to));
   if (q.status?.length) where.push(inArray(bookings.status, q.status));
   if (q.customerId) where.push(eq(bookings.customerId, q.customerId));
@@ -170,7 +183,7 @@ export async function listBookings(q: z.infer<typeof BookingListQuery>, user: Cu
 /** Full booking: details, status history and invoice (if delivered). */
 export async function getBooking(bookingId: number, user: CurrentUser) {
   const [row] = await baseBookingQuery().where(eq(bookings.id, bookingId));
-  if (!row || !canAccessBranch(user, row.branchId)) throw new NotFoundError("Booking");
+  if (!row || !canAccessBooking(user, row.branchId)) throw new NotFoundError("Booking");
 
   const [history, [invoice]] = await Promise.all([
     db
@@ -205,19 +218,19 @@ export async function getBookingByNo(bookingNo: string, user: CurrentUser) {
  * The call center's daily list. view=pending: still to call;
  * view=done: already confirmed/ignored/assigned/...; view=all: everything that day.
  */
-export async function getCallList(q: z.infer<typeof CallListQuery>) {
+export async function getCallList(q: z.infer<typeof CallListQuery>, user: CurrentUser) {
   const date = q.date ?? (q.day === "tomorrow" ? addDays(today(), 1) : today());
   const statusFilter =
     q.view === "pending" ? eq(bookings.status, "pending") : q.view === "done" ? inArray(bookings.status, BOOKING_STATUSES.filter((s) => s !== "pending")) : undefined;
 
   const [items, summary] = await Promise.all([
     baseBookingQuery()
-      .where(and(eq(bookings.serviceDate, date), statusFilter))
+      .where(and(eq(bookings.serviceDate, date), statusFilter, bookingScope(user, bookings.branchId)))
       .orderBy(asc(bookings.startTime), asc(bookings.id)),
     db
       .select({ status: bookings.status, total: count() })
       .from(bookings)
-      .where(eq(bookings.serviceDate, date))
+      .where(and(eq(bookings.serviceDate, date), bookingScope(user, bookings.branchId)))
       .groupBy(bookings.status),
   ]);
   const counts = Object.fromEntries(BOOKING_STATUSES.map((s) => [s, 0])) as Record<string, number>;
@@ -285,6 +298,7 @@ export async function createBooking(input: z.infer<typeof BookingCreateSchema>, 
       customerId: input.customerId,
       patientId: input.patientId,
       serviceDate: input.serviceDate,
+      days: input.days,
       startTime: input.startTime ?? "08:00:00",
       locationType: input.locationType,
       ...hospitalBed(input.locationType, input.wardNo, input.bedNo),
@@ -299,12 +313,33 @@ export async function createBooking(input: z.infer<typeof BookingCreateSchema>, 
   return getBooking(bookingId, user);
 }
 
-/** Change date/time/location/patient — only before an employee is assigned. */
+/**
+ * Change date/time/location/patient/package — only before an employee is assigned.
+ * The number of days can also be changed once assigned (until delivered): the
+ * caregiver must then be free on every day of the new period.
+ */
 export async function updateBooking(bookingId: number, input: z.infer<typeof BookingUpdateSchema>, user: CurrentUser) {
   const [current] = await db.select().from(bookings).where(eq(bookings.id, bookingId));
-  if (!current) throw new NotFoundError("Booking");
+  if (!current || !canAccessBooking(user, current.branchId)) throw new NotFoundError("Booking");
+  const onlyDays = Object.keys(input).every((k) => k === "days");
+  if (current.status === "assigned" && onlyDays) {
+    if (input.days !== undefined && input.days !== current.days) {
+      await db.transaction(async (tx) => {
+        const b = await lockBooking(tx, bookingId);
+        if (b.status !== "assigned" || !b.employeeId) throw new ConflictError(`Booking ${b.bookingNo} changed meanwhile; reload and try again.`);
+        await assertEmployeeCanWork(b.employeeId, b.serviceDate, endDateOf(b.serviceDate, input.days!), { tx, excludeBookingId: b.id });
+        await tx.update(bookings).set({ days: input.days }).where(eq(bookings.id, bookingId));
+      });
+    }
+    if (input.notes !== undefined) await db.update(bookings).set({ notes: input.notes }).where(eq(bookings.id, bookingId));
+    return getBooking(bookingId, user);
+  }
   if (current.status !== "pending" && current.status !== "confirmed") {
-    throw new ConflictError(`Booking ${current.bookingNo} is ${current.status}; details can only be changed while pending or confirmed.`);
+    throw new ConflictError(
+      current.status === "assigned"
+        ? `Booking ${current.bookingNo} is assigned; only the number of days can be changed now. Unassign the caregiver to change other details.`
+        : `Booking ${current.bookingNo} is ${current.status}; details can only be changed while pending or confirmed.`,
+    );
   }
   if (input.serviceDate) checkDate(input.serviceDate);
 
@@ -314,6 +349,7 @@ export async function updateBooking(bookingId: number, input: z.infer<typeof Boo
   const set: Partial<typeof bookings.$inferInsert> = {};
   if (input.patientId) set.patientId = input.patientId;
   if (input.serviceDate) set.serviceDate = input.serviceDate;
+  if (input.days) set.days = input.days;
   if (input.startTime) set.startTime = input.startTime;
   if (input.notes !== undefined) set.notes = input.notes;
   if (input.packageId && input.packageId !== current.packageId) Object.assign(set, fromPackage(await packageForBooking(input.packageId)));
@@ -347,6 +383,7 @@ export async function updateBooking(bookingId: number, input: z.infer<typeof Boo
 export async function confirmBooking(bookingId: number, user: CurrentUser, note?: string) {
   await db.transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
+    assertBranchAccess(user, b);
     await applyTransition(tx, b, "confirm", user, { confirmedBy: user.id, confirmedAt: new Date() }, note);
   });
   return getBooking(bookingId, user);
@@ -356,6 +393,7 @@ export async function confirmBooking(bookingId: number, user: CurrentUser, note?
 export async function ignoreBooking(bookingId: number, user: CurrentUser, note?: string) {
   await db.transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
+    assertBranchAccess(user, b);
     await applyTransition(
       tx,
       b,
@@ -368,30 +406,42 @@ export async function ignoreBooking(bookingId: number, user: CurrentUser, note?:
   return getBooking(bookingId, user);
 }
 
-export async function getAvailableForBooking(bookingId: number) {
+/** Free employees for a booking. Branch managers only get their own branch's employees. */
+export async function getAvailableForBooking(bookingId: number, user: CurrentUser) {
   const [b] = await db
-    .select({ serviceDate: bookings.serviceDate, status: bookings.status, employeeId: bookings.employeeId })
+    .select({ serviceDate: bookings.serviceDate, days: bookings.days, endDate: bookings.endDate, status: bookings.status, employeeId: bookings.employeeId, branchId: bookings.branchId })
     .from(bookings)
     .where(eq(bookings.id, bookingId));
-  if (!b) throw new NotFoundError("Booking");
-  const employeesFree = await listAvailableEmployees(b.serviceDate);
-  return { date: b.serviceDate, bookingStatus: b.status, currentEmployeeId: b.employeeId, employees: employeesFree };
+  if (!b || !canAccessBooking(user, b.branchId)) throw new NotFoundError("Booking");
+  // Free on EVERY day of the booking (this booking itself doesn't count).
+  const employeesFree = await listAvailableEmployees(b.serviceDate, assignableBranch(user), b.endDate ?? b.serviceDate, bookingId);
+  return { date: b.serviceDate, days: b.days, endDate: b.endDate, bookingStatus: b.status, currentEmployeeId: b.employeeId, employees: employeesFree };
 }
 
-/** Assign (from confirmed) or reassign (from assigned) to an employee of any branch. */
+/**
+ * Assign (from confirmed) or reassign (from assigned). Director / call center: an employee of
+ * any branch. Branch manager: only an employee of their own branch (and only bookings that are
+ * unassigned or already in their branch).
+ */
 export async function assignEmployee(bookingId: number, employeeId: number, user: CurrentUser, note?: string) {
   await db.transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
+    assertBranchAccess(user, b);
     if (b.status === "assigned" && b.employeeId === employeeId) {
       throw new ConflictError("The booking is already assigned to this employee.");
     }
-    const emp = await assertEmployeeCanWork(employeeId, b.serviceDate);
+    const emp = await assertEmployeeCanWork(employeeId, b.serviceDate, endDateOf(b.serviceDate, b.days), { tx, excludeBookingId: b.id });
+    const onlyBranch = assignableBranch(user);
+    if (onlyBranch !== undefined && emp.branchId !== onlyBranch) {
+      throw new ForbiddenError(`${emp.fullName} belongs to another branch; you can only assign your own branch's employees.`);
+    }
     let autoNote = note;
     if (!autoNote && b.status === "assigned" && b.employeeId) {
       const [prev] = await tx.select({ name: employees.fullName }).from(employees).where(eq(employees.id, b.employeeId));
       autoNote = `Reassigned from ${prev?.name ?? "previous employee"} to ${emp.fullName}`;
     }
-    // The UNIQUE (busy_employee_id, service_date) index rejects double bookings → 409.
+    // assertEmployeeCanWork checked every day of the booking (employee row locked);
+    // the UNIQUE (busy_employee_id, service_date) index is a last safety net → 409.
     await applyTransition(
       tx,
       b,
@@ -407,13 +457,14 @@ export async function assignEmployee(bookingId: number, employeeId: number, user
 export async function unassignEmployee(bookingId: number, user: CurrentUser, note?: string) {
   await db.transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
+    assertBranchAccess(user, b);
     await applyTransition(tx, b, "unassign", user, { employeeId: null, branchId: null, assignedBy: null, assignedAt: null }, note);
   });
   return getBooking(bookingId, user);
 }
 
 function assertBranchAccess(user: CurrentUser, b: Booking) {
-  if (!canAccessBranch(user, b.branchId)) throw new ForbiddenError("This booking belongs to another branch.");
+  if (!canAccessBooking(user, b.branchId)) throw new ForbiddenError("This booking belongs to another branch.");
 }
 
 /** Session done → status delivered + invoice created automatically (same transaction). */
@@ -421,13 +472,18 @@ export async function deliverBooking(bookingId: number, user: CurrentUser, note?
   const invoiceId = await db.transaction(async (tx) => {
     const b = await lockBooking(tx, bookingId);
     assertBranchAccess(user, b);
-    if (b.serviceDate > today()) {
-      throw new AppError(`Booking ${b.bookingNo} is for ${b.serviceDate}; it can be marked delivered on or after that date.`);
+    const lastDay = endDateOf(b.serviceDate, b.days);
+    if (lastDay > today()) {
+      throw new AppError(
+        b.days > 1
+          ? `Booking ${b.bookingNo} runs until ${lastDay}; it can be marked delivered on or after the last day.`
+          : `Booking ${b.bookingNo} is for ${b.serviceDate}; it can be marked delivered on or after that date.`,
+      );
     }
     await applyTransition(tx, b, "deliver", user, { deliveredBy: user.id, deliveredAt: new Date() }, note);
 
     const invoiceNo = await nextNumber(tx, "invoice");
-    const qty = 1;
+    const qty = b.days; // package price x number of days
     const amount = (Number(b.rate) * qty).toFixed(2);
     const [res] = await tx.insert(invoices).values({
       invoiceNo,

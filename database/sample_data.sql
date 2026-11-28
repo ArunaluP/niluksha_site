@@ -6,6 +6,7 @@
 -- Safe to run again: rows that already exist are skipped (INSERT IGNORE).
 -- =====================================================================
 USE care_booking;
+SET time_zone = '+00:00'; -- times are stored in UTC
 START TRANSACTION;
 
 -- ---------- Branches (20) ----------

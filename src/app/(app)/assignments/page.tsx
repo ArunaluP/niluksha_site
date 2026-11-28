@@ -3,7 +3,7 @@ import { hospitalPlace } from "@/lib/lk-rules";
 import Link from "next/link";
 import { Tabs } from "@/components/app/list-tools";
 import { AssignButton } from "@/components/app/booking-actions";
-import { Avatar, Card, EmptyState, niceDate, niceTime, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Avatar, Card, DaysTag, EmptyState, niceDate, niceTime, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { ActionButton } from "@/components/ui/client";
 import { listBookings } from "@/features/bookings/service";
 import { requirePermission } from "@/lib/dal";
@@ -16,6 +16,7 @@ type Row = {
   id: number;
   bookingNo: string;
   serviceDate: string;
+  days: number;
   startTime: string;
   status: string;
   customerName: string;
@@ -46,7 +47,14 @@ export default async function AssignmentsPage({ searchParams }: PageProps<"/assi
 
   return (
     <div>
-      <PageHeader title="Assignments" subtitle="Give each confirmed booking a free caregiver or nurse, from any branch" />
+      <PageHeader
+        title="Assignments"
+        subtitle={
+          user.role === "branch_manager"
+            ? "Give each confirmed booking a free caregiver or nurse from your branch"
+            : "Give each confirmed booking a free caregiver or nurse, from any branch"
+        }
+      />
 
       <Card strong>
         <div className="border-b border-indigo-100/60 px-4 py-3">
@@ -85,7 +93,10 @@ export default async function AssignmentsPage({ searchParams }: PageProps<"/assi
                 {rows.map((b) => (
                   <tr key={b.id} className="transition hover:bg-white/50">
                     <Td className="whitespace-nowrap">
-                      <div className="font-semibold">{niceTime(b.startTime)}</div>
+                      <div className="font-semibold">
+                        {niceTime(b.startTime)}
+                        <DaysTag days={b.days} />
+                      </div>
                       <Link href={`/bookings/${b.bookingNo}`} className="text-xs text-accent hover:underline">
                         {b.bookingNo}
                       </Link>

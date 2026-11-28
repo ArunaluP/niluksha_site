@@ -1,6 +1,6 @@
-import { ArrowRight, CalendarPlus, Clock, FileText, Home, Hospital, PhoneCall, Sparkles, UserCheck, Users } from "lucide-react";
+import { ArrowRight, CalendarPlus, FileText, PhoneCall, UserCheck, Users } from "lucide-react";
 import Link from "next/link";
-import { Avatar, Card, CardHeader, cn, LinkButton, money, niceDate, niceDateTime, niceTime, Pill, STATUS_DOT, StatusBadge } from "@/components/ui";
+import { Avatar, Card, CardHeader, cn, LinkButton, money, niceDate, niceDateTime, Pill, STATUS_DOT, StatusBadge } from "@/components/ui";
 import { getDashboardScreen } from "@/features/dashboard/service";
 import { requireUser } from "@/lib/dal";
 import { hasPermission, ROLE_LABELS } from "@/lib/permissions";
@@ -30,7 +30,8 @@ export default async function DashboardPage() {
     { label: "Delivered", value: s.delivered + s.invoice_printed, cls: "from-[#f59e0b] to-[#fbbf24]", href: "/bookings?status=delivered,invoice_printed" },
   ];
   const active = d.summary.totalBookings - s.ignored;
-  const maxWeek = Math.max(1, ...d.week.map((w) => w.total));
+  const next7 = d.week.slice(0, 7); // "Next 7 days" card; the outlook shows all 15
+  const maxWeek = Math.max(1, ...next7.map((w) => w.total));
 
   return (
     <div className="space-y-5">
@@ -42,16 +43,34 @@ export default async function DashboardPage() {
             {niceDate(d.date)} · {ROLE_LABELS[user.role]} overview
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {canWork && (
             <>
               <LinkButton href="/bookings/new">
                 <CalendarPlus size={16} /> New booking
               </LinkButton>
               <LinkButton href="/call-list" variant="secondary">
-                <PhoneCall size={16} /> Call list
+                <PhoneCall size={16} /> Call customers ({s.pending})
               </LinkButton>
-              
+              <LinkButton href="/assignments" variant="secondary">
+                <UserCheck size={16} /> Assign employees ({s.confirmed})
+              </LinkButton>
+              <LinkButton href="/invoices?status=generated" variant="secondary">
+                <FileText size={16} /> Print invoices
+              </LinkButton>
+            </>
+          )}
+          {!canWork && (
+            <>
+              <LinkButton href="/bookings" variant="secondary">
+                <FileText size={16} /> Bookings
+              </LinkButton>
+              <LinkButton href="/employees" variant="secondary">
+                <Users size={16} /> Employees
+              </LinkButton>
+              <LinkButton href="/invoices" variant="secondary">
+                <FileText size={16} /> Invoices
+              </LinkButton>
             </>
           )}
         </div>
@@ -82,17 +101,17 @@ export default async function DashboardPage() {
         <Card className="p-5 lg:col-span-3">
           <div className="text-[15px] font-semibold">Next 7 days</div>
           <div className="mt-2 flex items-end justify-between">
-            <div className="text-3xl font-semibold">{d.week.reduce((a, w) => a + w.total, 0)}</div>
+            <div className="text-3xl font-semibold">{next7.reduce((a, w) => a + w.total, 0)}</div>
             <div className="flex h-12 items-end gap-1">
-              {d.week.map((w) => (
+              {next7.map((w) => (
                 <div key={w.date} title={`${w.date}: ${w.total}`} className="w-2.5 rounded-sm bg-gradient-to-t from-[#6658f5] to-[#a78bfa]" style={{ height: `${Math.max(8, (w.total / maxWeek) * 100)}%` }} />
               ))}
             </div>
           </div>
           <div className="mt-4 space-y-2 text-sm">
-            <Row label="Waiting for a call" value={d.week.reduce((a, w) => a + w.pending, 0)} />
-            <Row label="Need an employee" value={d.week.reduce((a, w) => a + w.confirmed, 0)} />
-            <Row label="Assigned" value={d.week.reduce((a, w) => a + w.assigned, 0)} />
+            <Row label="Waiting for a call" value={next7.reduce((a, w) => a + w.pending, 0)} />
+            <Row label="Need an employee" value={next7.reduce((a, w) => a + w.confirmed, 0)} />
+            <Row label="Assigned" value={next7.reduce((a, w) => a + w.assigned, 0)} />
           </div>
         </Card>
 
@@ -122,109 +141,9 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Row 2 */}
-      <div className="grid gap-5 lg:grid-cols-12 lg:items-start">
-        <Card className="lg:col-span-5">
-          <CardHeader
-            title="Today's schedule"
-            subtitle="Sessions starting today"
-            action={
-              <Link href={`/bookings?date=${d.date}`} className="rounded-lg bg-white/70 px-2.5 py-1 text-[11px] font-medium text-muted hover:text-ink">
-                View all
-              </Link>
-            }
-          />
-          <div className="space-y-2 px-5 pb-5">
-            {d.schedule.length === 0 && <p className="py-6 text-center text-sm text-muted">No sessions today.</p>}
-            {d.schedule.map((b) => (
-              <Link key={b.id} href={`/bookings/${b.bookingNo}`} className="flex items-center gap-3 rounded-xl bg-white/55 p-3 transition hover:bg-white/80">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                  {b.locationType === "hospital" ? <Hospital size={18} /> : <Home size={18} />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{b.patientName}</div>
-                  <div className="truncate text-xs text-muted">
-                    {b.customerName} · {b.employeeName ?? "No employee yet"}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="mb-1 flex items-center justify-end gap-1 text-xs text-muted">
-                    <Clock size={12} /> {niceTime(b.startTime)}
-                  </div>
-                  <StatusBadge status={b.status} />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="lg:col-span-4">
-          <CardHeader title="7-day outlook" subtitle="Bookings by status per day" />
-          <div className="px-5 pb-5">
-            <div className="grid grid-cols-[84px_repeat(7,1fr)] gap-1.5 text-[11px]">
-              <div />
-              {d.week.map((w) => (
-                <div key={w.date} className="text-center font-medium text-muted">
-                  {new Date(`${w.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })}
-                </div>
-              ))}
-              {(["pending", "confirmed", "assigned", "delivered"] as const).map((st) => (
-                <Heat key={st} label={MIX.find((m) => m.key === st)!.label} values={d.week.map((w) => w[st])} />
-              ))}
-              <div className="flex items-center pt-1 font-semibold text-ink">Total</div>
-              {d.week.map((w) => (
-                <div key={w.date} className="pt-1 text-center font-semibold">
-                  {w.total}
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-
-        <div className="relative overflow-hidden rounded-[1.25rem] border border-white/80 bg-gradient-to-br from-[#e9e6ff]/90 via-[#efeaff]/80 to-[#dfe7ff]/80 p-5 shadow-[0_10px_30px_-12px_rgba(76,81,191,0.25)] backdrop-blur-xl lg:col-span-3">
-          <div className="flex items-center gap-2 text-[15px] font-semibold">
-            <Sparkles size={16} className="text-accent" /> Quick actions
-          </div>
-          <p className="mt-1 text-xs text-muted">The daily flow, one click away.</p>
-          <div className="mt-4 space-y-2">
-            {canWork ? (
-              <>
-                <QuickLink href="/bookings/new" icon={<CalendarPlus size={16} />} label="Record a new booking" />
-                <QuickLink href="/call-list" icon={<PhoneCall size={16} />} label={`Call customers (${s.pending})`} />
-                <QuickLink href="/assignments" icon={<UserCheck size={16} />} label={`Assign employees (${s.confirmed})`} />
-                <QuickLink href="/invoices?status=generated" icon={<FileText size={16} />} label="Print invoices" />
-              </>
-            ) : (
-              <>
-                <QuickLink href="/bookings" icon={<FileText size={16} />} label="Branch bookings" />
-                <QuickLink href="/employees" icon={<Users size={16} />} label="Branch employees" />
-                <QuickLink href="/invoices" icon={<FileText size={16} />} label="Branch invoices" />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Row 3 */}
+      {/* Row 2: this month + 15-day outlook */}
       <div className="grid gap-5 lg:grid-cols-12">
-        <Card className="lg:col-span-7">
-          <CardHeader title="Recent activity" subtitle="Latest status changes" />
-          <div className="divide-y divide-indigo-100/60 px-5 pb-4">
-            {d.activity.length === 0 && <p className="py-6 text-center text-sm text-muted">No activity yet.</p>}
-            {d.activity.map((a) => (
-              <Link key={a.id} href={`/bookings/${a.bookingNo}`} className="flex items-center gap-3 py-2.5 hover:opacity-80">
-                <Avatar name={a.userName} size="sm" />
-                <div className="min-w-0 flex-1 text-sm">
-                  <span className="font-medium">{a.userName}</span> <span className="text-muted">set</span>{" "}
-                  <span className="font-medium">{a.bookingNo}</span> <span className="text-muted">to</span> <StatusBadge status={a.toStatus} />
-                </div>
-                <Pill>{niceDateTime(a.createdAt)}</Pill>
-              </Link>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="lg:col-span-5">
+        <Card className="lg:col-span-4">
           <CardHeader title="This month" subtitle="Booking status mix" />
           <div className="flex items-center gap-6 px-5 pb-5">
             <Donut values={MIX.map((m) => ({ value: d.monthMix[m.key] ?? 0, color: m.color }))} />
@@ -241,7 +160,56 @@ export default async function DashboardPage() {
             </div>
           </div>
         </Card>
+
+        <Card className="lg:col-span-8">
+          <CardHeader title="15-day outlook" subtitle="Bookings by status per day" />
+          <div className="px-5 pb-5">
+            <div className="grid grid-cols-[76px_repeat(15,minmax(0,1fr))] gap-1 text-[11px]">
+              <div />
+              {d.week.map((w, i) => (
+                <div key={w.date} className="text-center font-medium leading-tight text-muted">
+                  {new Date(`${w.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })}
+                  <div className="text-[10px] font-normal">
+                    {/* day number; the month is shown on the first column and on the 1st of a month */}
+                    {new Date(`${w.date}T00:00:00Z`).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      ...(i === 0 || w.date.endsWith("-01") ? { month: "short" } : {}),
+                      timeZone: "UTC",
+                    })}
+                  </div>
+                </div>
+              ))}
+              {(["pending", "confirmed", "assigned", "delivered"] as const).map((st) => (
+                <Heat key={st} label={MIX.find((m) => m.key === st)!.label} values={d.week.map((w) => w[st])} />
+              ))}
+              <div className="flex items-center pt-1 font-semibold text-ink">Total</div>
+              {d.week.map((w) => (
+                <div key={w.date} className="pt-1 text-center font-semibold">
+                  {w.total}
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
       </div>
+
+      {/* Row 3: recent activity (full width) */}
+        <Card>
+          <CardHeader title="Recent activity" subtitle="Latest status changes" />
+          <div className="divide-y divide-indigo-100/60 px-5 pb-4">
+            {d.activity.length === 0 && <p className="py-6 text-center text-sm text-muted">No activity yet.</p>}
+            {d.activity.map((a) => (
+              <Link key={a.id} href={`/bookings/${a.bookingNo}`} className="flex items-center gap-3 py-2.5 hover:opacity-80">
+                <Avatar name={a.userName} size="sm" />
+                <div className="min-w-0 flex-1 text-sm">
+                  <span className="font-medium">{a.userName}</span> <span className="text-muted">set</span>{" "}
+                  <span className="font-medium">{a.bookingNo}</span> <span className="text-muted">to</span> <StatusBadge status={a.toStatus} />
+                </div>
+                <Pill>{niceDateTime(a.createdAt)}</Pill>
+              </Link>
+            ))}
+          </div>
+        </Card>
     </div>
   );
 }
@@ -255,16 +223,6 @@ function Row({ label, value }: { label: string; value: number }) {
   );
 }
 
-function QuickLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
-  return (
-    <Link href={href} className="flex items-center gap-3 rounded-xl bg-white/65 px-3 py-2.5 text-sm font-medium transition hover:bg-white">
-      <span className="text-accent">{icon}</span>
-      <span className="flex-1">{label}</span>
-      <ArrowRight size={14} className="text-muted" />
-    </Link>
-  );
-}
-
 function Heat({ label, values }: { label: string; values: number[] }) {
   const max = Math.max(1, ...values);
   return (
@@ -274,7 +232,7 @@ function Heat({ label, values }: { label: string; values: number[] }) {
         <div
           key={i}
           title={`${v}`}
-          className="flex h-8 items-center justify-center rounded-md text-[11px] font-semibold"
+          className="mx-auto flex h-[29px] w-[90%] items-center justify-center rounded-md text-[11px] font-semibold"
           style={{
             background: v ? `rgba(102, 88, 245, ${0.15 + (v / max) * 0.6})` : "rgba(255,255,255,0.55)",
             color: v / max > 0.5 ? "#fff" : "#4b4a7a",

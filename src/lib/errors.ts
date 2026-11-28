@@ -52,6 +52,7 @@ const UNIQUE_KEY_MESSAGES: Record<string, string> = {
   uq_branches_code: "A branch with this code already exists.",
   uq_employees_emp_no: "This employee number is already used.",
   uq_employees_nic: "An employee with this NIC is already registered.",
+  uq_employees_file_no: "This employee number is already used by another employee.",
   uq_hospitals_name_city: "This hospital is already registered in that city.",
   uq_invoices_booking: "An invoice already exists for this booking.",
   uq_packages_name: "A package with this name already exists.",

@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { bookings, bookingStatusLogs, branches, customers, employees, hospitals, invoices, patients, users, type BookingStatus } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
 import { NotFoundError } from "@/lib/errors";
-import { canAccessBranch } from "@/lib/permissions";
+import { utcDate } from "@/lib/dates";
+import { canAccessBooking } from "@/lib/permissions";
 import { classifyEvent, EVENT_LABELS, type EventKey } from "../reports/events";
 
 /**
@@ -56,10 +57,9 @@ export type BookingJourney = Awaited<ReturnType<typeof getBookingJourney>>;
 
 const BOOKING_NO = /^BK-\d{4}-\d{5}$/i;
 
-/** MySQL DATETIME text is Sri Lanka wall time (see reports/service.ts) → ISO string. */
+/** MySQL DATETIME text (stored in UTC) → ISO string. */
 function lkIso(v: string | Date): string {
-  const d = v instanceof Date ? v : new Date(`${String(v).replace(" ", "T")}+05:30`);
-  return d.toISOString();
+  return utcDate(v).toISOString();
 }
 
 const minutesBetween = (a: string | null, b: string | null) => (a && b ? Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 60_000)) : null);
@@ -75,6 +75,7 @@ export async function getBookingJourney(ref: string, user: CurrentUser) {
       bookingNo: bookings.bookingNo,
       status: bookings.status,
       serviceDate: bookings.serviceDate,
+      days: bookings.days,
       startTime: bookings.startTime,
       durationHours: bookings.durationHours,
       packageName: bookings.packageName,
@@ -109,7 +110,7 @@ export async function getBookingJourney(ref: string, user: CurrentUser) {
     .leftJoin(employees, eq(employees.id, bookings.employeeId))
     .leftJoin(branches, eq(branches.id, bookings.branchId))
     .where(where);
-  if (!row || !canAccessBranch(user, row.branchId)) throw new NotFoundError("Booking");
+  if (!row || !canAccessBooking(user, row.branchId)) throw new NotFoundError("Booking");
 
   const [logs, [inv]] = await Promise.all([
     db
@@ -214,6 +215,7 @@ export async function getBookingJourney(ref: string, user: CurrentUser) {
       bookingNo: row.bookingNo,
       status: row.status as BookingStatus,
       serviceDate: row.serviceDate,
+      days: row.days,
       startTime: row.startTime,
       durationHours: row.durationHours,
       packageName: row.packageName,

@@ -11,6 +11,8 @@ import { decrypt, SESSION_COOKIE } from "@/lib/session";
  * src/lib/dal.ts and protectedAction(), close to the data.
  */
 const PUBLIC_PATHS = ["/login"];
+/** Open to everyone, logged in or not: the invoice links customers get on WhatsApp (/i/<secret>). */
+const OPEN_PATHS = ["/i/", "/b/"]; // invoice and booking links sent on WhatsApp
 
 export default async function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
@@ -18,6 +20,7 @@ export default async function proxy(req: NextRequest) {
   // API routes answer for themselves with JSON 401/403 (see src/lib/api.ts),
   // so Postman/fetch get a proper error instead of an HTML redirect.
   if (pathname.startsWith("/api/")) return NextResponse.next();
+  if (OPEN_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   const session = await decrypt(req.cookies.get(SESSION_COOKIE)?.value);

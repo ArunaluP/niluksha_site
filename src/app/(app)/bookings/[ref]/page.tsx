@@ -1,13 +1,15 @@
 import { asc, eq } from "drizzle-orm";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, FileText, Printer } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AssignButton, ConfirmButton, IgnoreButton } from "@/components/app/booking-actions";
 import { BookingJourney } from "@/components/app/booking-journey";
+import { WhatsappShare } from "@/components/app/whatsapp-share";
 import { LinkButton, niceDate } from "@/components/ui";
 import { ActionButton } from "@/components/ui/client";
 import { db } from "@/db";
 import { customers, hospitals, patients } from "@/db/schema";
+import { bookingLinkSummary, loadBookingConfirmation } from "@/features/bookings/confirmation";
 import { getBookingJourney } from "@/features/bookings/journey";
 import { getBooking, getBookingByNo } from "@/features/bookings/service";
 import { listPackages } from "@/features/packages/service";
@@ -54,22 +56,25 @@ export default async function BookingDetailPage({ params, searchParams }: PagePr
   const b = await getBookingByNo(ref, user).catch(notFoundIfMissing);
   if (ref !== b.bookingNo) redirect(`/bookings/${b.bookingNo}${queryString(sp)}`); // bk-… → BK-…
 
-  const [journey, [cust], [pat], hospitalList, packageList] = await Promise.all([
+  const [journey, [cust], [pat], hospitalList, packageList, confirmation, linkSum] = await Promise.all([
     getBookingJourney(String(b.id), user),
     db.select({ address: customers.address }).from(customers).where(eq(customers.id, b.customerId)),
     db.select({ careNotes: patients.careNotes }).from(patients).where(eq(patients.id, b.patientId)),
     db.select({ id: hospitals.id, name: hospitals.name, city: hospitals.city }).from(hospitals).where(eq(hospitals.isActive, true)).orderBy(asc(hospitals.name)),
     listPackages({ active: true }),
+    loadBookingConfirmation(b.id),
+    bookingLinkSummary(b.id),
   ]);
 
   const can = (p: Parameters<typeof hasPermission>[1]) => hasPermission(user, p);
+  const lastDay = b.endDate ?? b.serviceDate; // deliver on or after the last day
   const t = today();
   const back = typeof sp.back === "string" ? sp.back : undefined;
   const fromReports = sp.from === "reports" && back && SAFE_BACK.test(back) ? back : null;
 
   const actions = (
     <>
-      {(b.status === "pending" || b.status === "confirmed") && can("createBooking") && (
+      {(b.status === "pending" || b.status === "confirmed" || b.status === "assigned") && can("createBooking") && (
         <EditBookingButton
           booking={{ ...b, locationType: b.locationType as "home" | "hospital" }}
           hospitals={hospitalList}
@@ -93,16 +98,29 @@ export default async function BookingDetailPage({ params, searchParams }: PagePr
           input={{ id: b.id, note: "Session completed" }}
           variant="primary"
           size="md"
-          disabled={b.serviceDate > t}
+          disabled={lastDay > t}
           confirm={`Mark ${b.bookingNo} as delivered? An invoice will be created.`}
           success="Delivered — invoice created"
         >
-          {b.serviceDate > t ? `Deliver on ${niceDate(b.serviceDate)}` : "Mark delivered"}
+          {lastDay > t ? `Deliver on ${niceDate(lastDay)}` : "Mark delivered"}
         </ActionButton>
       )}
       {["pending", "confirmed", "assigned"].includes(b.status) && can("useCallList") && (
         <IgnoreButton bookingId={b.id} bookingNo={b.bookingNo} assigned={b.status === "assigned"} size="md" />
       )}
+      {b.status !== "ignored" && can("createBooking") && (
+        <WhatsappShare
+          kind="booking"
+          id={b.id}
+          docNo={b.bookingNo}
+          customerId={b.customerId}
+          number={confirmation?.whatsappNumber ?? null}
+          summary={{ ...linkSum, activeUntil: linkSum.activeUntil?.toISOString() ?? null, lastViewed: linkSum.lastViewed?.toISOString() ?? null }}
+        />
+      )}
+      <LinkButton href={`/bookings/${b.bookingNo}/print`} variant="secondary" size="md">
+        <Printer size={16} /> Print booking
+      </LinkButton>
       {b.invoice && can("viewInvoices") && (
         <LinkButton href={`/invoices/${b.invoice.id}`} size="md">
           <FileText size={16} /> {b.status === "delivered" && can("printInvoice") ? "Print invoice" : "Invoice"} {b.invoice.invoiceNo}

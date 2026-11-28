@@ -33,6 +33,7 @@ const columns = {
   bookingId: invoices.bookingId,
   bookingNo: bookings.bookingNo,
   serviceDate: bookings.serviceDate,
+  days: bookings.days,
   customerId: invoices.customerId,
   customerName: customers.fullName,
   customerPhone: customers.phone,
@@ -74,15 +75,23 @@ export async function listInvoices(q: z.infer<typeof InvoiceListQuery>, user: Cu
   return { items, total, page: q.page, pageSize: q.pageSize };
 }
 
-/** Everything needed to print the invoice. */
-export async function getInvoice(invoiceId: number, user: CurrentUser) {
+/**
+ * Everything needed to print the invoice, with no permission check.
+ * Only for getInvoice() below and the public invoice link (which has its own check).
+ */
+export async function loadInvoice(invoiceId: number) {
   const [row] = await db
     .select({
       ...columns,
       customerNo: customers.customerNo,
       customerAddress: customers.address,
+      customerAltPhone: customers.altPhone,
+      phoneWhatsapp: customers.phoneWhatsapp,
+      altPhoneWhatsapp: customers.altPhoneWhatsapp,
+      whatsappPhone: customers.whatsappPhone,
       patientName: patients.fullName,
       startTime: bookings.startTime,
+      days: bookings.days,
       packageName: bookings.packageName,
       durationHours: bookings.durationHours,
       locationType: bookings.locationType,
@@ -103,11 +112,20 @@ export async function getInvoice(invoiceId: number, user: CurrentUser) {
     .leftJoin(employees, eq(employees.id, bookings.employeeId))
     .leftJoin(users, eq(users.id, invoices.printedBy))
     .where(eq(invoices.id, invoiceId));
-  if (!row || !canAccessBranch(user, row.branchId)) throw new NotFoundError("Invoice");
+  if (!row) return null;
 
   const s = await getSettings();
   const company = { name: s.company_name ?? "", address: s.company_address ?? "", phone: s.company_phone ?? "" };
   return { ...row, company };
+}
+
+export type InvoiceDetails = NonNullable<Awaited<ReturnType<typeof loadInvoice>>>;
+
+/** Everything needed to print the invoice (only invoices of branches the user may see). */
+export async function getInvoice(invoiceId: number, user: CurrentUser): Promise<InvoiceDetails> {
+  const inv = await loadInvoice(invoiceId);
+  if (!inv || !canAccessBranch(user, inv.branchId)) throw new NotFoundError("Invoice");
+  return inv;
 }
 
 /** Called each time the invoice PDF is printed/downloaded (counts reprints). */

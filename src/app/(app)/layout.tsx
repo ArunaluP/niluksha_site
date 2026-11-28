@@ -14,10 +14,11 @@ import {
   UserRound,
   Users,
   UserCheck,
-  HeartPulse,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { Avatar } from "@/components/ui";
+import { cookies } from "next/headers";
+import { Sidebar } from "@/components/app/sidebar";
+import { SIDEBAR_COOKIE } from "@/components/app/sidebar-cookie";
 import { NavLink } from "@/components/ui/client";
 import { requireUser } from "@/lib/dal";
 import { hasPermission, ROLE_LABELS, type Permission } from "@/lib/permissions";
@@ -66,55 +67,26 @@ const GROUPS: { title: string; items: Item[] }[] = [
 ];
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
+  // Read the cookie first: it marks the layout dynamic before any database query (quiet builds).
+  const cookieStore = await cookies();
   const [user, settings] = await Promise.all([requireUser(), getSettings()]);
   const brand = settings.company_name || "Care Booking";
+  // Only the pages this role may open (pages check again).
+  const groups = GROUPS.map((g) => ({
+    title: g.title,
+    items: g.items.filter((i) => !i.permission || hasPermission(user, i.permission)).map((i) => ({ href: i.href, label: i.label, icon: i.icon, exact: i.exact })),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <div className="flex min-h-screen gap-5 p-4 lg:p-5">
-      {/* Sidebar */}
-      <aside className="glass no-print sticky top-5 hidden h-[calc(100vh-2.5rem)] w-60 shrink-0 flex-col md:flex">
-        <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#6658f5] to-[#a78bfa] text-white shadow-md">
-            <HeartPulse size={18} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[13px] font-semibold leading-tight">{brand}</div>
-            <div className="text-[11px] text-muted">Care booking system</div>
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4 scroll-thin">
-          {GROUPS.map((g) => {
-            const items = g.items.filter((i) => !i.permission || hasPermission(user, i.permission));
-            if (!items.length) return null;
-            return (
-              <div key={g.title}>
-                <div className="px-3 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted/80">{g.title}</div>
-                <div className="space-y-0.5">
-                  {items.map((i) => (
-                    <NavLink key={i.href} href={i.href} icon={i.icon} exact={i.exact}>
-                      {i.label}
-                    </NavLink>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </nav>
-
-        <div className="m-3 flex items-center gap-3 rounded-2xl bg-white/60 p-3">
-          <Avatar name={user.name} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold">{user.name}</div>
-            <div className="text-[11px] text-muted">{ROLE_LABELS[user.role]}</div>
-          </div>
-          <form action={logout}>
-            <button className="rounded-lg p-1.5 text-muted hover:bg-white hover:text-rose-600" title="Log out" aria-label="Log out">
-              <LogOut size={16} />
-            </button>
-          </form>
-        </div>
-      </aside>
+      <Sidebar
+        groups={groups}
+        brand={brand}
+        userName={user.name}
+        roleLabel={ROLE_LABELS[user.role]}
+        initialCollapsed={cookieStore.get(SIDEBAR_COOKIE)?.value === "collapsed"}
+        logoutAction={logout}
+      />
 
       {/* Page */}
       <main className="min-w-0 flex-1 pb-10">

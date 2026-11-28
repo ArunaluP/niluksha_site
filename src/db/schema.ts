@@ -8,6 +8,8 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  char,
+  customType,
   date,
   datetime,
   decimal,
@@ -23,6 +25,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
+import { HEARD_FROM } from "@/features/employees/registration";
 
 /**
  * first / middle / last name, plus full_name which MySQL builds itself
@@ -57,6 +60,7 @@ export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 /** Employee types. Only ASSIGNABLE ones can be sent to patients. */
 export const DESIGNATIONS = ["Caregiver", "Nurse", "Branch Manager", "Call Center", "Manager"] as const;
 export type Designation = (typeof DESIGNATIONS)[number];
+export { HEARD_FROM, type HeardFrom } from "@/features/employees/registration";
 export const ASSIGNABLE_DESIGNATIONS = ["Caregiver", "Nurse"] as const satisfies readonly Designation[];
 
 const id = () => int("id", { unsigned: true }).autoincrement().primaryKey();
@@ -113,6 +117,8 @@ export const employees = mysqlTable(
   {
     id: id(),
     empNo: varchar("emp_no", { length: 20 }).notNull(),
+    /** The employee number written on the paper registration form (EMP-0001 is the system number). */
+    fileNo: varchar("file_no", { length: 30 }),
     branchId: fk("branch_id").notNull(),
     ...personNameColumns(),
     nic: varchar("nic", { length: 12 }),
@@ -122,6 +128,25 @@ export const employees = mysqlTable(
     altPhone: varchar("alt_phone", { length: 20 }),
     email: varchar("email", { length: 160 }),
     address: varchar("address", { length: 255 }),
+    gnDivision: varchar("gn_division", { length: 100 }),
+    district: varchar("district", { length: 30 }),
+    nearestPolice: varchar("nearest_police", { length: 100 }),
+    nearestPostOffice: varchar("nearest_post_office", { length: 100 }),
+    guardianName: varchar("guardian_name", { length: 160 }),
+    guardianRelationship: varchar("guardian_relationship", { length: 60 }),
+    guardianAddress: varchar("guardian_address", { length: 255 }),
+    guardianPhone: varchar("guardian_phone", { length: 20 }),
+    // documents handed over at registration
+    docGnCertificate: boolean("doc_gn_certificate").notNull().default(false),
+    docNicCopy: boolean("doc_nic_copy").notNull().default(false),
+    docPoliceCertificate: boolean("doc_police_certificate").notNull().default(false),
+    docCharacterCertificate: boolean("doc_character_certificate").notNull().default(false),
+    docBirthCertificate: boolean("doc_birth_certificate").notNull().default(false),
+    heardFrom: mysqlEnum("heard_from", HEARD_FROM),
+    /** Employee who referred them (when heardFrom = "employee"). */
+    referredBy: fk("referred_by"),
+    rulesAgreedAt: datetime("rules_agreed_at", { mode: "date" }),
+    rulesAgreedBy: fk("rules_agreed_by"),
     designation: varchar("designation", { length: 60 }).notNull().default("Caregiver"),
     qualifications: text("qualifications"),
     joinDate: date("join_date", { mode: "string" }),
@@ -133,9 +158,22 @@ export const employees = mysqlTable(
   (t) => [
     uniqueIndex("uq_employees_emp_no").on(t.empNo),
     uniqueIndex("uq_employees_nic").on(t.nic),
+    uniqueIndex("uq_employees_file_no").on(t.fileNo),
     index("idx_employees_branch_status").on(t.branchId, t.status),
+    index("idx_employees_referred_by").on(t.referredBy),
   ],
 );
+
+/** MEDIUMBLOB (up to 16 MB) as a Node Buffer. */
+const mediumBlob = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "mediumblob" });
+
+/** One webcam photo per employee (JPEG). In MySQL so it is part of every backup. */
+export const employeePhotos = mysqlTable("employee_photos", {
+  employeeId: fk("employee_id").primaryKey(),
+  mime: varchar("mime", { length: 20 }).notNull(),
+  data: mediumBlob("data").notNull(),
+  updatedAt: updatedAt(),
+});
 
 // ---------------------------------------------------------------------------
 // 4. employee_leaves
@@ -186,6 +224,10 @@ export const customers = mysqlTable(
     dob: date("dob", { mode: "string" }),
     phone: varchar("phone", { length: 20 }).notNull(),
     altPhone: varchar("alt_phone", { length: 20 }),
+    /** WhatsApp ticks: invoices go to the main phone if ticked, else the other phone, else whatsappPhone. */
+    phoneWhatsapp: boolean("phone_whatsapp").notNull().default(true),
+    altPhoneWhatsapp: boolean("alt_phone_whatsapp").notNull().default(true),
+    whatsappPhone: varchar("whatsapp_phone", { length: 20 }),
     email: varchar("email", { length: 160 }),
     address: varchar("address", { length: 255 }),
     city: varchar("city", { length: 80 }),
@@ -254,7 +296,12 @@ export const bookings = mysqlTable(
     bookingNo: varchar("booking_no", { length: 20 }).notNull(),
     customerId: fk("customer_id").notNull(),
     patientId: fk("patient_id").notNull(),
+    /** First day. */
     serviceDate: date("service_date", { mode: "string" }).notNull(),
+    /** Days in a row (1-30) with the same caregiver; invoice = rate x days. */
+    days: tinyint("days", { unsigned: true }).notNull().default(1),
+    /** Last day, worked out by MySQL — never written by the app. */
+    endDate: date("end_date", { mode: "string" }).generatedAlwaysAs(sql`service_date + INTERVAL (days - 1) DAY`, { mode: "stored" }),
     startTime: time("start_time").notNull().default("08:00:00"),
     packageId: fk("package_id"),
     packageName: varchar("package_name", { length: 80 }),
@@ -293,6 +340,7 @@ export const bookings = mysqlTable(
     index("idx_bookings_customer_date").on(t.customerId, t.serviceDate),
     index("idx_bookings_patient").on(t.patientId),
     index("idx_bookings_employee_date").on(t.employeeId, t.serviceDate),
+    index("idx_bookings_employee_range").on(t.employeeId, t.serviceDate, t.endDate),
     index("idx_bookings_branch_date").on(t.branchId, t.serviceDate),
     index("idx_bookings_hospital").on(t.hospitalId),
     index("idx_bookings_package").on(t.packageId),
@@ -375,6 +423,88 @@ export const sequences = mysqlTable(
     lastValue: int("last_value", { unsigned: true }).notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.name, t.year] })],
+);
+
+// ---------------------------------------------------------------------------
+// 13. google_drive_connection (one row, id = 1)
+// ---------------------------------------------------------------------------
+export const googleDriveConnection = mysqlTable("google_drive_connection", {
+  id: tinyint("id", { unsigned: true }).primaryKey().default(1),
+  accountEmail: varchar("account_email", { length: 160 }).notNull(),
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  folderId: varchar("folder_id", { length: 120 }),
+  folderName: varchar("folder_name", { length: 255 }),
+  folderLink: varchar("folder_link", { length: 500 }),
+  lastError: varchar("last_error", { length: 255 }),
+  connectedBy: fk("connected_by").notNull(),
+  connectedAt: datetime("connected_at", { mode: "date" }).notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: updatedAt(),
+});
+
+// ---------------------------------------------------------------------------
+// 14. export_logs
+// ---------------------------------------------------------------------------
+export const EXPORT_REPORTS = ["activity", "employees", "employee"] as const;
+export const EXPORT_DESTINATIONS = ["download", "drive", "both"] as const;
+
+export const exportLogs = mysqlTable(
+  "export_logs",
+  {
+    id: id(),
+    userId: fk("user_id").notNull(),
+    report: mysqlEnum("report", EXPORT_REPORTS).notNull(),
+    periodFrom: date("period_from", { mode: "string" }).notNull(),
+    periodTo: date("period_to", { mode: "string" }).notNull(),
+    branchId: fk("branch_id"),
+    subject: varchar("subject", { length: 40 }),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    rowsCount: int("rows_count", { unsigned: true }).notNull().default(0),
+    destination: mysqlEnum("destination", EXPORT_DESTINATIONS).notNull(),
+    driveFileId: varchar("drive_file_id", { length: 120 }),
+    driveLink: varchar("drive_link", { length: 500 }),
+    status: mysqlEnum("status", ["ok", "failed"]).notNull().default("ok"),
+    error: varchar("error", { length: 255 }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("idx_exports_created").on(t.createdAt), index("idx_exports_user").on(t.userId)],
+);
+
+// ---------------------------------------------------------------------------
+// 15. invoice_links (secret 7-day links sent on WhatsApp)
+// ---------------------------------------------------------------------------
+export const invoiceLinks = mysqlTable(
+  "invoice_links",
+  {
+    id: id(),
+    invoiceId: fk("invoice_id").notNull(),
+    tokenHash: char("token_hash", { length: 64 }).notNull(),
+    expiresAt: datetime("expires_at", { mode: "date" }).notNull(),
+    disabledAt: datetime("disabled_at", { mode: "date" }),
+    views: int("views", { unsigned: true }).notNull().default(0),
+    lastViewedAt: datetime("last_viewed_at", { mode: "date" }),
+    createdBy: fk("created_by").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("uq_invoice_links_token").on(t.tokenHash), index("idx_invoice_links_invoice").on(t.invoiceId)],
+);
+
+// ---------------------------------------------------------------------------
+// 16. booking_links (secret 7-day links to a booking confirmation, sent on WhatsApp)
+// ---------------------------------------------------------------------------
+export const bookingLinks = mysqlTable(
+  "booking_links",
+  {
+    id: id(),
+    bookingId: fk("booking_id").notNull(),
+    tokenHash: char("token_hash", { length: 64 }).notNull(),
+    expiresAt: datetime("expires_at", { mode: "date" }).notNull(),
+    disabledAt: datetime("disabled_at", { mode: "date" }),
+    views: int("views", { unsigned: true }).notNull().default(0),
+    lastViewedAt: datetime("last_viewed_at", { mode: "date" }),
+    createdBy: fk("created_by").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("uq_booking_links_token").on(t.tokenHash), index("idx_booking_links_booking").on(t.bookingId)],
 );
 
 // Row types for use across the app

@@ -40,7 +40,7 @@ pending ──confirm──▶ confirmed ──assign──▶ assigned ──de
 - Details can be edited only while **pending** or **confirmed**.
 - **Free employee** on a date = active, not on leave, not already assigned/delivered that day (any branch).
 - **Deliver** is allowed on or after the service date. It creates the invoice: `amount = booking rate × 1`.
-- The booking's **branch** = the assigned employee's branch. Branch managers see only their branch.
+- The booking's **branch** = the assigned employee's branch. A new booking has **no branch** until it is assigned: every branch manager sees those (to call, confirm, edit or cancel), plus the bookings of their own branch. Bookings and invoices of another branch → 404 / 403.
 
 ## Roles
 
@@ -48,13 +48,16 @@ pending ──confirm──▶ confirmed ──assign──▶ assigned ──de
 
 | Permission | Director | Call center | Branch manager |
 |---|:-:|:-:|:-:|
-| Users, branches, hospitals, settings, employees + leave (write) | ✔ | | |
+| Users, branches, hospitals, packages, settings (write) | ✔ | | |
+| Employees + leave (register / edit / active-inactive) | ✔ | | ✔ own branch (branch fixed) |
 | View branches / hospitals / employees / settings | ✔ | ✔ | ✔ own branch |
-| Customers + patients | ✔ | ✔ | |
-| Create / edit bookings, call list, confirm, ignore | ✔ | ✔ | |
-| Assign / reassign / unassign, available employees | ✔ | ✔ | |
-| Deliver, print invoices, mark printed | ✔ | ✔ | |
-| View bookings, invoices, dashboard | ✔ all | ✔ all | ✔ own branch (view only) |
+| Customers + patients (company-wide) | ✔ | ✔ | ✔ |
+| Create / edit bookings, call list, confirm, ignore | ✔ | ✔ | ✔ new bookings (no branch) + own branch |
+| Assign / reassign / unassign, available employees | ✔ any branch | ✔ any branch | ✔ **own branch's employees only** (403 otherwise) |
+| Deliver, print invoices, mark printed | ✔ | ✔ | ✔ own branch |
+| WhatsApp invoice / booking | ✔ | ✔ | ✔ own branch + new bookings |
+| Excel export to Google Drive | ✔ | ✔ | ✔ (own-branch data) |
+| View bookings, invoices, dashboard | ✔ all | ✔ all | ✔ own branch + new bookings (invoices: own branch) |
 
 **Employee types:** Caregiver, Nurse, Branch Manager, Call Center, Manager.
 Only **Caregivers and Nurses** appear as free employees and can be assigned to patients.
@@ -72,19 +75,22 @@ Only **Caregivers and Nurses** appear as free employees and can be assigned to p
 | Method | URL | Body / query | Step |
 |---|---|---|---|
 | GET | `/api/customers?q=0771234567` | q = phone, NIC, name or CUS no | Find caller |
-| POST | `/api/customers` | `{ firstName, middleName?, lastName, phone, nic?, altPhone?, email?, address?, city?, notes?, patients?: [{ firstName, middleName?, lastName, gender, relationship?, relationshipOther?, dob?, address?, careNotes? }] }` | New customer |
+| POST | `/api/customers` | `{ firstName, middleName?, lastName, phone, nic?, altPhone?, phoneWhatsapp? (default true), altPhoneWhatsapp? (default true), whatsappPhone? (07X mobile, kept only when neither ticked phone has a number), email?, address?, city?, notes?, patients?: [{ firstName, middleName?, lastName, gender, relationship?, relationshipOther?, dob?, address?, careNotes? }] }` | New customer |
 | GET | `/api/customers/:id` | – | Profile + patients + recent bookings |
 | POST | `/api/customers/:id/patients` | `{ firstName, middleName?, lastName, gender, relationship?, relationshipOther?, dob?, address?, careNotes? }` | Add patient |
-| POST | `/api/bookings` | `{ customerId, patientId, serviceDate, startTime?, packageId?, locationType: "home"\|"hospital", hospitalId?, wardNo?, bedNo?, serviceAddress?, notes? }` | Record booking |
-| PATCH | `/api/bookings/:id` | any of `patientId, serviceDate, startTime, packageId, locationType, hospitalId, wardNo, bedNo, serviceAddress, notes` | Edit (pending/confirmed) |
+| POST | `/api/bookings` | `{ customerId, patientId, serviceDate, days? (1-30, default 1), startTime?, packageId?, locationType: "home"\|"hospital", hospitalId?, wardNo?, bedNo?, serviceAddress?, notes? }` | Record booking |
+| PATCH | `/api/bookings/:id` | any of `patientId, serviceDate, days, startTime, packageId, locationType, hospitalId, wardNo, bedNo, serviceAddress, notes` | Edit (pending/confirmed). When **assigned**, only `{ days }` (the caregiver must be free on every day, else 409) |
 | GET | `/api/call-list?day=today\|tomorrow&date=&view=pending\|done\|all` | – | Daily call list + counts |
 | POST | `/api/bookings/:id/confirm` | `{ note? }` | Customer confirmed |
 | POST | `/api/bookings/:id/ignore` | `{ note? }` | Customer declined / cancelled |
-| GET | `/api/bookings/:id/available-employees` | – | Free employees on that date |
+| GET | `/api/bookings/:id/pdf` | – | Booking confirmation PDF (`?inline=1` to open). Everyone who can view the booking |
+| POST | `/api/bookings/:id/whatsapp` | – | Director + call center. New 7-day booking link + `{ number, message, waUrl, link, summary }`. 409 for a cancelled booking or a customer with no WhatsApp number |
+| GET / DELETE | `/api/bookings/:id/links` | – | Link summary / disable every booking link |
+| GET | `/api/bookings/:id/available-employees` | – | Employees free on **every day** of the booking (`{ date, days, endDate, employees }`) |
 | GET | `/api/employees/available?date=&branchId=` | – | Same, for any date |
 | POST | `/api/bookings/:id/assign` | `{ employeeId, note? }` | Assign or reassign |
 | POST | `/api/bookings/:id/unassign` | `{ note? }` | Back to confirmed |
-| POST | `/api/bookings/:id/deliver` | `{ note? }` | Done + invoice created |
+| POST | `/api/bookings/:id/deliver` | `{ note? }` | Done + invoice created (on or after the **last** day). Invoice: qty = days, amount = price × days |
 | GET | `/api/invoices?status=generated\|printed&from=&to=&branchId=&customerId=&q=` | – | Invoice list |
 | GET | `/api/invoices/:id` | – | Everything to print |
 | POST | `/api/invoices/:id/print` | – | Count a print |
@@ -109,8 +115,9 @@ Only **Caregivers and Nurses** appear as free employees and can be assigned to p
 | GET / PATCH | `/api/users/:id` | `{ name?, email?, password?, role?, branchId?, isActive? }` |
 | GET / POST | `/api/hospitals?type=&search=&active=` | `{ name, type: "private"\|"government", address?, city?, phone? }` |
 | GET / PATCH | `/api/hospitals/:id` | same fields + `isActive` |
-| GET / POST | `/api/employees?branchId=&status=&designation=&search=` | `{ branchId, firstName, middleName?, lastName, gender, phone, designation?: "Caregiver"\|"Nurse"\|"Branch Manager"\|"Call Center"\|"Manager", nic?, dob?, altPhone?, email?, address?, qualifications?, joinDate? }` |
-| GET / PATCH | `/api/employees/:id` | same fields + `status: "active"\|"inactive"` |
+| GET / POST | `/api/employees?branchId=&status=&designation=&search=` | `{ branchId, firstName, middleName?, lastName, gender, phone, designation?: "Caregiver"\|"Nurse"\|"Branch Manager"\|"Call Center"\|"Manager", nic?, dob?, altPhone?, email?, address?, qualifications?, joinDate?, fileNo?, gnDivision?, district?, nearestPolice?, nearestPostOffice?, guardianName?, guardianRelationship?, guardianAddress?, guardianPhone?, docGnCertificate?, docNicCopy?, docPoliceCertificate?, docCharacterCertificate?, docBirthCertificate?, heardFrom?: "poster"\|"leaflet"\|"newspaper"\|"facebook"\|"messenger"\|"office"\|"employee", referredBy? (only kept when heardFrom = employee), rulesAgreed?: boolean, photo?: "data:image/jpeg;base64,…" (≤ 600 KB) }`. `fileNo` = employee number on the paper form (unique, 409 if used); `empNo` (EMP-0001) is still made by the system. Search also matches `fileNo` |
+| GET / PATCH | `/api/employees/:id` | same fields + `status: "active"\|"inactive"`. PATCH: `photo: null` removes the photo, `rulesAgreed: false` clears the agreement, `""`/`null` clears a text field. GET also returns `referrerName`, `rulesAgreedAt`, `rulesAgreedByName`, `photoAt` |
+| GET | `/api/employees/:id/photo` | The employee's photo (image/jpeg or image/png); 404 if none |
 | GET / POST | `/api/employees/:id/leaves` | `{ fromDate, toDate, reason? }` |
 | DELETE | `/api/leaves/:id` | – |
 | GET / PATCH | `/api/patients/:id` | patient fields |
@@ -264,3 +271,41 @@ Branch managers get **404** for bookings of another branch (same rule as `/api/b
 The booking screen is **`/bookings/BK-2026-00018`** (the booking number). Old links like `/bookings/12` redirect there,
 keeping the query string. `?from=reports&back=/reports?...` shows "← Back to Reports" (only `/reports…` targets are accepted).
 The REST API keeps numeric ids: `/api/bookings/:id`.
+
+### Employee report
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/reports/employees?from=&to=&branchId=&page=&pageSize=` | Employees ranked by finished sessions (status `invoice_printed`) whose **service date** is in the period. Tie → latest `lastWorked`. Defaults to this month. Returns `items[{rank, empNo, fullName, sessions, daysWorked, hours, value, lastWorked}]`, `totals`, `chart{unit: day|week, bars[{from,to,count}]}` |
+| GET | `/api/reports/employees/:empNo?from=&to=&branchId=` | One employee: `employee`, `totals`, `chart`, `sessions[]` (booking, customer, patient, package, location, rate, invoice). 404 for unknown employee |
+
+Same access rules as the activity report: Director / call center see all branches (Director may pass `branchId`), branch managers only their own branch.
+
+### Excel export (+ Google Drive)
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| POST | `/api/exports` | `{ report: "activity"\|"employees"\|"employee", destination: "download"\|"drive"\|"both", filters: { from, to, branchId?, event? }, empNo? }` | Returns `{ fileName, rows, file (base64 .xlsx, unless drive only), drive: { link } \| null, driveError }`. Drive: every role (branch managers export their own branch), 400 when Drive isn't connected. Every export is logged in `export_logs`. |
+| GET | `/api/google/connect` | | Director, browser only: starts the Google sign-in ("Connect Google Drive"). |
+| GET | `/api/google/callback` | | Google returns here; saves the encrypted key and goes back to Settings. |
+
+Set-up: `docs/GOOGLE_DRIVE_SETUP.md`.
+
+### Invoice PDF + WhatsApp
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| GET | `/api/invoices/:id/pdf` | | The invoice as a PDF (`?inline=1` opens it). |
+| POST | `/api/invoices/:id/whatsapp` | | Invoice must be marked printed (409 otherwise, or when the customer has no WhatsApp number). Makes a new 7-day link; returns `{ number, message, waUrl, link: { url, expiresAt } \| null, summary }`. `link` is null until Settings → `public_base_url` is set. Director + call center. |
+| GET | `/api/invoices/:id/links` | | `{ sent, active, activeUntil, views, lastViewed }` |
+| DELETE | `/api/invoices/:id/links` | | Disable every link of this invoice. |
+| GET | `/i/:secret` | | **No login.** The customer's page: invoice summary + Download / View PDF. Expired or disabled → "no longer valid" page. Not indexed, not cached. |
+| GET | `/i/:secret/pdf` | | **No login.** The PDF (`?download=1` saves it). 410 when the link doesn't work. |
+| GET | `/b/:secret` | | **No login.** Booking confirmation page from the booking WhatsApp message: status, details, estimated amount + Download / View PDF. |
+| GET | `/b/:secret/pdf` | | **No login.** The booking confirmation PDF. 410 when the link doesn't work. |
+
+WhatsApp number used: main phone if its tick is on, else the other phone if ticked, else `whatsappPhone`. `PATCH /api/settings { "public_base_url": "https://care.example.lk" }` sets the address used in links (`""` clears it).
+
+### Bookings for several days
+A booking can run **1-30 days in a row** (`days`) from `serviceDate`, with the same caregiver every day. MySQL works out `endDate` (the last day).
+- Assigning checks leave and other bookings on **every** day; the caregiver row is locked so two people can't book the same caregiver at once.
+- `days` can still be changed after assignment (until delivered).
+- `GET /api/bookings?date=` matches bookings running that day; `from`/`to` match any overlap.
+- Employee report: each day is one session; only the days inside the period count (hours and value too).

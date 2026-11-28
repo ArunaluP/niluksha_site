@@ -5,18 +5,18 @@ import { db } from "@/db";
 import { bookings, customers, employees, patients } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
 import { NotFoundError } from "@/lib/errors";
-import { normalizePhone } from "@/lib/lk-rules";
+import { normalizePhone, tickedPhoneHasNumber } from "@/lib/lk-rules";
 import { checkAgainstNic } from "@/lib/nic-check";
 import { ValidationError } from "@/lib/errors";
 import { nextNumber } from "@/lib/sequences";
 import {
-  isoDate,
   nullableAddress,
   nullableEmail,
   nullableBirthDate,
   nullableRelationshipOther,
   nullableCity,
   nullableNic,
+  nullableMobile,
   nullablePhone,
   nullableText,
   optAddress,
@@ -25,6 +25,7 @@ import {
   optRelationshipOther,
   optCity,
   optNic,
+  optMobile,
   optPhone,
   optText,
   pageParams,
@@ -32,7 +33,6 @@ import {
   nameFields,
   nameFieldsUpdate,
   phone,
-  reqText,
   type Paged,
 } from "@/lib/validation";
 
@@ -68,6 +68,10 @@ export const CustomerCreateSchema = z
     dob: optBirthDate,
     phone,
     altPhone: optPhone,
+    /** WhatsApp ticks (both ticked by default) and the separate WhatsApp number when neither is. */
+    phoneWhatsapp: z.boolean().default(true),
+    altPhoneWhatsapp: z.boolean().default(true),
+    whatsappPhone: optMobile,
     email: optEmail,
     address: optAddress,
     city: optCity,
@@ -86,6 +90,9 @@ export const CustomerUpdateFields = z.object({
   dob: nullableBirthDate,
   phone: phone.optional(),
   altPhone: nullablePhone,
+  phoneWhatsapp: z.boolean().optional(),
+  altPhoneWhatsapp: z.boolean().optional(),
+  whatsappPhone: nullableMobile,
   email: nullableEmail,
   address: nullableAddress,
   city: nullableCity,
@@ -120,6 +127,7 @@ export async function searchCustomers(query: z.infer<typeof CustomerListQuery>):
       or(
         like(customers.phone, s),
         like(customers.altPhone, s),
+        like(customers.whatsappPhone, s),
         like(customers.nic, s),
         like(customers.fullName, s),
         like(customers.customerNo, s),
@@ -165,6 +173,7 @@ export async function getCustomer(customerId: number) {
         id: bookings.id,
         bookingNo: bookings.bookingNo,
         serviceDate: bookings.serviceDate,
+        days: bookings.days,
         status: bookings.status,
         patientId: bookings.patientId,
         patientName: patients.fullName,
@@ -185,6 +194,8 @@ export async function createCustomer(input: z.infer<typeof CustomerCreateSchema>
   const { patients: newPatients, ...customer } = input;
   const nicDob = checkAgainstNic(customer);
   if (nicDob) customer.dob = nicDob;
+  // A ticked phone is the WhatsApp number, so the separate box is only kept when neither is.
+  if (tickedPhoneHasNumber(customer)) customer.whatsappPhone = undefined;
   const customerId = await db.transaction(async (tx) => {
     const customerNo = await nextNumber(tx, "customer");
     const [res] = await tx.insert(customers).values({ ...customer, customerNo, createdBy: user.id });
@@ -201,6 +212,8 @@ export async function updateCustomer(customerId: number, input: z.infer<typeof C
   const saved = await getCustomer(customerId);
   const nicDob = checkAgainstNic(input, saved);
   if (nicDob) input = { ...input, dob: nicDob };
+  const touchesWhatsapp = ["phone", "altPhone", "phoneWhatsapp", "altPhoneWhatsapp", "whatsappPhone"].some((k) => k in input);
+  if (touchesWhatsapp && tickedPhoneHasNumber({ ...saved, ...input, phone: input.phone ?? saved.phone })) input = { ...input, whatsappPhone: null };
   if (Object.keys(input).length) await db.update(customers).set(input).where(eq(customers.id, customerId));
   return getCustomer(customerId);
 }

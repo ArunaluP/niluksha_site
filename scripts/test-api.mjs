@@ -149,12 +149,48 @@ async function main() {
   const el = expect("List employees (search)", await admin.get("/api/employees?search=Nimali"), 200);
   check("search finds 1", el?.total === 1);
 
+  section("Employee registration form (employee number, guardian, documents, rules, photo)");
+  const JPEG = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////////////////////////////////////////////////////////////////////////////////8AAAsIAAEAAQEBEQD/xAAUAAEAAAAAAAAAAAAAAAAAAAAI/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwBH/9k=";
+  const reg = {
+    // office staff in Gampaha so the caregiver counts in later tests stay the same
+    branchId: gmp.id, designation: "Call Center", firstName: "Dilani", lastName: "Wijesinghe", gender: "female", phone: "0711112233", fileNo: "sn/1045",
+    gnDivision: "Kadawatha North", district: "Gampaha", nearestPolice: "Kadawatha", nearestPostOffice: "Kadawatha",
+    guardianName: "Sunethra Wijesinghe", guardianRelationship: "Mother", guardianAddress: "12, Temple Road, Kadawatha", guardianPhone: "0771234567",
+    docGnCertificate: true, docNicCopy: true, docPoliceCertificate: false, docCharacterCertificate: true, docBirthCertificate: true,
+    heardFrom: "employee", referredBy: e1.id, rulesAgreed: true, photo: JPEG,
+  };
+  const reg1 = expect("Register employee with the full form", await admin.post("/api/employees", reg), 201);
+  check("employee number saved (upper-case)", reg1?.fileNo === "SN/1045", reg1?.fileNo);
+  check("system number still created", /^EMP-\d+$/.test(reg1?.empNo ?? ""), reg1?.empNo);
+  check("guardian + area saved", reg1?.guardianName === "Sunethra Wijesinghe" && reg1?.district === "Gampaha" && reg1?.guardianPhone === "0771234567");
+  check("documents saved", reg1?.docGnCertificate === true && reg1?.docPoliceCertificate === false);
+  check("referred by employee 1", reg1?.referredBy === e1.id && reg1?.referrerName === "Nimali Perera", reg1);
+  check("rules agreed recorded with time + login", Boolean(reg1?.rulesAgreedAt) && Boolean(reg1?.rulesAgreedByName), reg1);
+  check("photo saved", Boolean(reg1?.photoAt));
+  const ph = await admin.text(`/api/employees/${reg1?.id}/photo`);
+  check("photo served as JPEG", ph.status === 200 && ph.headers.get("content-type") === "image/jpeg", ph.status);
+  expect("Same employee number again", await admin.post("/api/employees", { ...reg, phone: "0711112234", photo: undefined }), 409);
+  expect("Bad employee number characters", await admin.post("/api/employees", { ...reg, fileNo: "12#4", photo: undefined }), 400);
+  expect("Unknown district", await admin.post("/api/employees", { ...reg, fileNo: "X1", district: "Atlantis", photo: undefined }), 400);
+  expect("Photo that isn't a picture", await admin.post("/api/employees", { ...reg, fileNo: "X2", photo: "data:image/jpeg;base64,aGVsbG8gd29ybGQ=" }), 400);
+  expect("Unknown 'heard from'", await admin.post("/api/employees", { ...reg, fileNo: "X3", heardFrom: "radio", photo: undefined }), 400);
+  expect("Referrer can't be themselves", await admin.patch(`/api/employees/${reg1?.id}`, { referredBy: reg1?.id }), 400);
+  const reg2 = expect("Heard from Facebook clears the referrer", await admin.patch(`/api/employees/${reg1?.id}`, { heardFrom: "facebook" }), 200);
+  check("referrer cleared", reg2?.heardFrom === "facebook" && reg2?.referredBy === null, reg2);
+  const reg3 = expect("Untick agreement, remove photo, clear guardian phone", await admin.patch(`/api/employees/${reg1?.id}`, { rulesAgreed: false, photo: null, guardianPhone: "" }), 200);
+  check("agreement + photo + guardian phone cleared", reg3?.rulesAgreedAt === null && reg3?.photoAt === null && reg3?.guardianPhone === null, reg3);
+  check("photo gone (404)", (await admin.text(`/api/employees/${reg1?.id}/photo`)).status === 404);
+  const reg4 = expect("Search by employee number", await admin.get("/api/employees?search=SN/1045"), 200);
+  check("search by employee number finds 1", reg4?.total === 1);
+
   section("Settings");
   const st = expect("Get settings", await admin.get("/api/settings"), 200);
   check("no session_rate setting any more (prices live in packages)", st && st.session_rate === undefined, st);
   expect("Unknown setting key rejected", await admin.patch("/api/settings", { invoice_prefix: "X" }), 400);
   const st2 = expect("Update company name", await admin.patch("/api/settings", { company_name: "Niluksha Care Services" }), 200);
   check("company name saved", st2?.company_name === "Niluksha Care Services");
+  const st3 = expect("Save the Sinhala company name", await admin.patch("/api/settings", { company_name_si: "නිලුක්ෂ සත්කාර සේවා" }), 200);
+  check("Sinhala name saved", st3?.company_name_si === "නිලුක්ෂ සත්කාර සේවා", st3?.company_name_si);
 
   section("Packages");
   const pk = expect("List packages", await admin.get("/api/packages"), 200);
@@ -196,6 +232,26 @@ async function main() {
   check("customer number generated", /^CUS-\d{5}$/.test(cust?.customerNo ?? ""), cust?.customerNo);
   check("2 patients created", cust?.patients?.length === 2);
   const [pMother, pSelf] = [cust.patients.find((p) => p.relationship === "parent"), cust.patients.find((p) => p.relationship === "self")];
+  check("WhatsApp ticks on by default, no separate number", cust?.phoneWhatsapp === true && cust?.altPhoneWhatsapp === true && cust?.whatsappPhone === null, cust);
+  const waOnly = expect(
+    "Customer whose phones aren't on WhatsApp, with a WhatsApp number",
+    await call.post("/api/customers", { firstName: "Wa", lastName: "Only", phone: "0112345678", phoneWhatsapp: false, altPhoneWhatsapp: false, whatsappPhone: "+94 76 555 1234" }),
+    201,
+  );
+  check("WhatsApp number stored as 07…", waOnly?.whatsappPhone === "0765551234" && waOnly?.phoneWhatsapp === false, waOnly);
+  expect(
+    "WhatsApp number must be a mobile",
+    await call.post("/api/customers", { firstName: "Wa", lastName: "Land", phone: "0779999990", phoneWhatsapp: false, altPhoneWhatsapp: false, whatsappPhone: "0112223344" }),
+    400,
+  );
+  const waTicked = expect(
+    "Ticked phone wins over a separate WhatsApp number",
+    await call.post("/api/customers", { firstName: "Wa", lastName: "Tick", phone: "0779999989", whatsappPhone: "0765551235" }),
+    201,
+  );
+  check("separate number dropped", waTicked?.whatsappPhone === null, waTicked);
+  const waBack = expect("Ticking the phone again clears the WhatsApp number", await call.patch(`/api/customers/${waOnly.id}`, { phoneWhatsapp: true }), 200);
+  check("whatsappPhone cleared", waBack?.phoneWhatsapp === true && waBack?.whatsappPhone === null, waBack);
   const withNic = expect("Customer with NIC only", await call.post("/api/customers", { firstName: "Saman", lastName: "Kumara", phone: "0779999996", nic: "853400937V" }), 201);
   check("customer DOB filled from NIC", withNic?.dob === "1985-12-05", withNic?.dob);
   expect("Customer DOB must match NIC", await call.post("/api/customers", { firstName: "Saman", lastName: "Kumara", phone: "0779999995", nic: "853400937V", dob: "1985-12-06" }), 400);
@@ -289,7 +345,7 @@ async function main() {
   check("A branch = employee's branch (KDW)", aA?.branchId === kdw.id && aA?.status === "assigned");
   const dbl = await call.post(`/api/bookings/${bC.id}/assign`, { employeeId: e1.id });
   expect("Double-book employee 1 today", dbl, 409);
-  check("friendly double-booking message", dbl.body?.error === "This employee is already booked on that date.", dbl.body);
+  check("friendly double-booking message", /already booked on BK-\d{4}-\d{5}/.test(dbl.body?.error ?? ""), dbl.body);
   const avA2 = expect("Available today after assigning", await call.get(`/api/bookings/${bC.id}/available-employees`), 200);
   check("employee 1 no longer listed", !avA2?.employees?.some((e) => e.id === e1.id));
   expect("Reassign A to same employee", await call.post(`/api/bookings/${bA.id}/assign`, { employeeId: e1.id }), 409);
@@ -327,22 +383,19 @@ async function main() {
   section("Branch manager (KDW)");
   expect("Manager login", await mgr.login("mgr@test.lk", "Mgr@12345"), 200);
   const mb = expect("Manager bookings list", await mgr.get("/api/bookings"), 200);
-  check("manager sees only KDW bookings (A, B, C)", mb?.total === 3 && mb.items.every((b) => b.branchId === kdw.id), mb?.items?.map((b) => b.bookingNo));
-  expect("Manager can't create bookings", await mgr.post("/api/bookings", { customerId: cust.id, patientId: pMother.id, serviceDate: TODAY, locationType: "home" }), 403);
-  expect("Manager can't use call list", await mgr.get("/api/call-list"), 403);
+  check("manager sees KDW bookings (A, B, C) + booking D with no branch", mb?.total === 4 && mb.items.every((b) => b.branchId === kdw.id || b.branchId === null), mb?.items?.map((b) => b.bookingNo));
+  expect("Manager can use the call list", await mgr.get("/api/call-list"), 200);
   const me2 = expect("Manager employees list", await mgr.get("/api/employees"), 200);
   check("manager sees only KDW employees", me2?.total === 2, me2?.total);
-  expect("Manager can't add employees (view only)", await mgr.post("/api/employees", { branchId: kdw.id, firstName: "X", lastName: "Test", gender: "male", phone: "0711111119" }), 403);
-  expect("Manager can't add leave (view only)", await mgr.post(`/api/employees/${e1.id}/leaves`, { fromDate: TOMORROW, toDate: TOMORROW }), 403);
+  expect("Manager can't add employees to another branch", await mgr.post("/api/employees", { branchId: gmp.id, firstName: "X", lastName: "Test", gender: "male", phone: "0711111119" }), 403);
   expect("Manager can't open GMP employee", await mgr.get(`/api/employees/${e3.id}`), 404);
-  expect("Manager can't open ignored/unassigned booking D", await mgr.get(`/api/bookings/${bD.id}`), 404);
-  expect("Manager can't deliver (view only)", await mgr.post(`/api/bookings/${bC.id}/deliver`), 403);
+  expect("Manager can't add leave for GMP employee", await mgr.post(`/api/employees/${e3.id}/leaves`, { fromDate: plus(20), toDate: plus(20) }), 404);
+  expect("Manager can open booking D (no branch)", await mgr.get(`/api/bookings/${bD.id}`), 200);
   expect("Call center delivers C", await call.post(`/api/bookings/${bC.id}/deliver`), 200);
   const mInv = expect("Manager can view own-branch invoices", await mgr.get("/api/invoices"), 200);
   check("manager sees 2 KDW invoices", mInv?.total === 2, mInv?.total);
-  expect("Manager can't print invoices", await mgr.post(`/api/invoices/${mInv.items[0].id}/print`), 403);
   const md = expect("Manager dashboard", await mgr.get("/api/dashboard"), 200);
-  check("manager dashboard counts own branch only", md?.bookingsByStatus?.delivered === 2 && md?.bookingsByStatus?.ignored === 0, md);
+  check("manager dashboard: own branch + bookings with no branch", md?.bookingsByStatus?.delivered === 2 && md?.bookingsByStatus?.ignored === 1, md);
 
   section("Invoices");
   const inv = expect("Invoice list (generated)", await call.get("/api/invoices?status=generated"), 200);
@@ -353,11 +406,63 @@ async function main() {
   check("invoice number INV-YYYY-NNNNN", /^INV-\d{4}-\d{5}$/.test(full?.invoiceNo ?? ""));
   const pr = expect("Record print", await call.post(`/api/invoices/${invA.id}/print`), 200);
   check("print_count = 1", pr?.printCount === 1);
+  expect("WhatsApp before the invoice is marked printed", await call.post(`/api/invoices/${invA.id}/whatsapp`), 409);
   const mp = expect("Mark invoice printed", await call.post(`/api/invoices/${invA.id}/mark-printed`), 200);
   check("invoice printed", mp?.status === "printed" && mp?.printedByName === "Call Agent");
   expect("Mark printed again", await call.post(`/api/invoices/${invA.id}/mark-printed`), 409);
   const finalA = expect("Booking A after printing", await call.get(`/api/bookings/${bA.id}`), 200);
   check("A closed: invoice_printed", finalA?.status === "invoice_printed");
+
+  section("Invoice on WhatsApp (7-day link)");
+  expect("Bad public web address rejected", await admin.patch("/api/settings", { public_base_url: "care.example" }), 400);
+  expect("Set the public web address", await admin.patch("/api/settings", { public_base_url: `${BASE}/` }), 200);
+  const wa = expect("Prepare WhatsApp message", await call.post(`/api/invoices/${invA.id}/whatsapp`), 200);
+  check("opens WhatsApp with the customer's number", wa?.waUrl?.startsWith("https://wa.me/94771234567?text=") && wa?.number === "0771234567", wa?.waUrl);
+  check("message has the details and the link", wa?.message?.includes(full.invoiceNo) && wa.message.includes("Rs. ") && wa.message.includes(full.patientName) && wa.message.includes(wa?.link?.url ?? "§"), wa?.message);
+  const linkPath = new URL(wa.link.url).pathname;
+  check("link = /i/<43-char secret>, valid 7 days", /^\/i\/[A-Za-z0-9_-]{43}$/.test(linkPath) && Math.abs(new Date(wa.link.expiresAt) - Date.now() - 7 * 864e5) < 60e3, wa?.link);
+  const page = await anon.text(linkPath);
+  check("customer opens the link without login", page.status === 200 && page.text.includes(full.invoiceNo) && page.text.includes("Download PDF"), page.status);
+  check("link page is not indexed", page.headers.get("x-robots-tag")?.includes("noindex"), page.headers.get("x-robots-tag"));
+  const pdf = await anon.text(`${linkPath}/pdf?download=1`);
+  check("PDF download from the link", pdf.status === 200 && pdf.text.startsWith("%PDF") && pdf.headers.get("content-disposition")?.includes(`${full.invoiceNo}.pdf`), pdf.status);
+  const staffPdf = await call.text(`/api/invoices/${invA.id}/pdf`);
+  check("staff PDF button", staffPdf.status === 200 && staffPdf.text.startsWith("%PDF"), staffPdf.status);
+  check("PDF needs login (staff route)", (await anon.text(`/api/invoices/${invA.id}/pdf`)).status === 401);
+  const ls = expect("Link summary", await call.get(`/api/invoices/${invA.id}/links`), 200);
+  check("1 working link, opened once", ls?.active === 1 && ls?.views === 1, ls);
+  const fake = await anon.text(`/i/${"x".repeat(43)}`);
+  check("made-up link shows 'no longer valid'", fake.status === 200 && fake.text.includes("no longer valid"), fake.status);
+  check("made-up link: no PDF", (await anon.text(`/i/${"x".repeat(43)}/pdf`)).status === 410);
+  const off = expect("Disable links", await call.del(`/api/invoices/${invA.id}/links`), 200);
+  check("no working links", off?.active === 0, off);
+  check("disabled link: no PDF", (await anon.text(`${linkPath}/pdf`)).status === 410);
+
+  section("Booking confirmation on WhatsApp + print");
+  const bw = expect("Prepare booking WhatsApp message", await call.post(`/api/bookings/${full.bookingId}/whatsapp`), 200);
+  check("booking: opens WhatsApp with the customer's number", bw?.waUrl?.startsWith("https://wa.me/94771234567?text=") && bw?.number === "0771234567", bw?.waUrl);
+  check("booking message: number, patient, estimate, link", bw?.message?.includes(full.bookingNo) && bw.message.includes(full.patientName) && bw.message.includes("Estimated amount") && bw.message.includes(bw?.link?.url ?? "§"), bw?.message);
+  const bPath = new URL(bw.link.url).pathname;
+  check("booking link = /b/<43-char secret>", /^\/b\/[A-Za-z0-9_-]{43}$/.test(bPath), bPath);
+  const bPage = await anon.text(bPath);
+  check("customer opens the booking link without login", bPage.status === 200 && bPage.text.includes(full.bookingNo) && bPage.text.includes("Estimated amount"), bPage.status);
+  check("booking link page is not indexed", bPage.headers.get("x-robots-tag")?.includes("noindex"));
+  const bPdf = await anon.text(`${bPath}/pdf?download=1`);
+  check("booking PDF from the link", bPdf.status === 200 && bPdf.text.startsWith("%PDF") && bPdf.headers.get("content-disposition")?.includes(`${full.bookingNo}.pdf`), bPdf.status);
+  const bStaffPdf = await mgr.text(`/api/bookings/${full.bookingId}/pdf`);
+  check("staff booking PDF (manager can view)", bStaffPdf.status === 200 && bStaffPdf.text.startsWith("%PDF"), bStaffPdf.status);
+  check("booking PDF needs login", (await anon.text(`/api/bookings/${full.bookingId}/pdf`)).status === 401);
+  const bls = expect("Booking link summary", await call.get(`/api/bookings/${full.bookingId}/links`), 200);
+  check("1 working booking link, opened once", bls?.active === 1 && bls?.views === 1, bls);
+  check("invoice link secret doesn't open a booking", (await anon.text(`/b${linkPath.slice(2)}/pdf`)).status === 410);
+  expect("Cancelled booking can't be sent", await call.post(`/api/bookings/${bD.id}/whatsapp`), 409);
+  const bOff = expect("Disable booking links", await call.del(`/api/bookings/${full.bookingId}/links`), 200);
+  check("booking links disabled", bOff?.active === 0 && (await anon.text(`${bPath}/pdf`)).status === 410, bOff);
+  const printPage = await call.text(`/bookings/${full.bookingNo}/print`);
+  check("print page shows the confirmation", printPage.status === 200 && printPage.text.includes("CONFIRMATION") && printPage.text.includes(full.bookingNo), printPage.status);
+  expect("Clear the public web address", await admin.patch("/api/settings", { public_base_url: "" }), 200);
+  const wa2 = expect("WhatsApp without a public address", await call.post(`/api/invoices/${invA.id}/whatsapp`), 200);
+  check("message sent without a link", wa2?.link === null && !wa2?.message?.includes("http"), wa2?.message);
 
   section("Reports (activity)");
   // Everything above happened today. ONE row per booking = the last step it reached today
@@ -419,6 +524,41 @@ async function main() {
   check("manager CSV has only own branch (3 rows)", csvM.status === 200 && csvM.text.trim().split(/\r?\n/).length === 4);
   expect("CSV bad dates → 400", await admin.get(`/api/reports/activity/csv?from=${TOMORROW}`), 400);
 
+  section("Reports (employees)");
+  // Only A reached invoice_printed (C is delivered but not printed → not finished).
+  const er = expect("Employee report (this month)", await admin.get("/api/reports/employees"), 200);
+  check("one employee with 1 finished session (A)", er?.total === 1 && er.items[0].sessions === 1 && er.totals.sessions === 1, er?.items);
+  check("value = A's rate", Number(er?.totals?.value) === Number(finalA.rate), er?.totals);
+  check("rank 1, last worked = A's date", er?.items?.[0]?.rank === 1 && er.items[0].lastWorked === finalA.serviceDate, er?.items?.[0]);
+  check("chart has a bar per day with A's day = 1", er?.chart?.unit === "day" && er.chart.bars.find((b) => b.from === finalA.serviceDate)?.count === 1, er?.chart?.unit);
+  const empNo = er.items[0].empNo;
+  const es = expect("One employee's sessions", await admin.get(`/api/reports/employees/${empNo}`), 200);
+  check("lists booking A with its invoice", es?.sessions?.length === 1 && es.sessions[0].bookingNo === finalA.bookingNo && /^INV-/.test(es.sessions[0].invoiceNo ?? ""), es?.sessions);
+  expect("Unknown employee → 404", await admin.get("/api/reports/employees/EMP-9999"), 404);
+  expect("Employee report: from after to", await admin.get(`/api/reports/employees?from=${TODAY}&to=${YESTERDAY}`), 400);
+  expect("Employee report: future date", await admin.get(`/api/reports/employees?to=${TOMORROW}`), 400);
+  const erM = expect("Manager employee report", await mgr.get(`/api/reports/employees?branchId=${gmp.id}`), 200);
+  check("manager: KDW session counted (branchId ignored)", erM?.totals?.sessions === 1, erM?.totals);
+  const erG = expect("Director: GMP only", await admin.get(`/api/reports/employees?branchId=${gmp.id}`), 200);
+  check("no finished sessions at GMP", erG?.total === 0, erG?.total);
+  expect("No login: employee report", await anon.get("/api/reports/employees"), 401);
+
+  section("Excel exports");
+  // The test server runs without Google keys, so Drive is "not connected".
+  const xl = expect("Export employee report → download", await admin.post("/api/exports", { report: "employees", destination: "download", filters: {} }), 200);
+  check("xlsx file returned (zip 'PK' header)", Buffer.from(xl?.file ?? "", "base64").subarray(0, 2).toString() === "PK", xl?.fileName);
+  check("file name has the period", /^Employee report \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2} - All branches\.xlsx$/.test(xl?.fileName ?? ""), xl?.fileName);
+  const xl1 = expect("Export one employee", await admin.post("/api/exports", { report: "employee", empNo, destination: "download", filters: {} }), 200);
+  check("one-employee file", xl1?.rows === 1 && xl1.fileName.includes(empNo), xl1?.fileName);
+  const xa = expect("Export customer report (today)", await call.post("/api/exports", { report: "activity", destination: "download", filters: { from: TODAY, to: TODAY } }), 200);
+  check("customer report rows = 4 bookings", xa?.rows === 4, xa?.rows);
+  expect("Drive not connected → 400", await admin.post("/api/exports", { report: "employees", destination: "drive", filters: {} }), 400);
+  expect("Manager may save to Drive (not connected → 400, not 403)", await mgr.post("/api/exports", { report: "employees", destination: "both", filters: {} }), 400);
+  expect("Manager can download", await mgr.post("/api/exports", { report: "employees", destination: "download", filters: {} }), 200);
+  expect("Bad filters → 400", await admin.post("/api/exports", { report: "employees", destination: "download", filters: { from: TOMORROW } }), 400);
+  expect("Unknown report → 400", await admin.post("/api/exports", { report: "payroll", destination: "download" }), 400);
+  expect("No login: export", await anon.post("/api/exports", { report: "employees", destination: "download" }), 401);
+
   section("Booking journey");
   // A (all today): created → confirmed → assigned (Nimali) → reassigned (Sunil) → unassigned
   //                → assigned (Nimali) → delivered → invoice printed  = 8 status changes
@@ -478,6 +618,115 @@ async function main() {
     admin.post(`/api/bookings/${bF.data.id}/assign`, { employeeId: e1.id }),
   ]);
   check("simultaneous assign: exactly one succeeds", [r1.status, r2.status].sort().join(",") === "200,409", [r1.status, r2.status]);
+
+  section("Bookings for several days");
+  const home2 = { customerId: cust2.id, patientId: p2.id, locationType: "home", serviceAddress: "5 Lake Rd" };
+  expect("0 days rejected", await call.post("/api/bookings", { ...home2, serviceDate: TOMORROW, days: 0 }), 400);
+  expect("31 days rejected", await call.post("/api/bookings", { ...home2, serviceDate: TOMORROW, days: 31 }), 400);
+  const bM = expect("3-day booking from tomorrow", await call.post("/api/bookings", { ...home2, serviceDate: TOMORROW, days: 3 }), 201);
+  check("days 3, last day = tomorrow + 2", bM?.days === 3 && bM?.endDate === plus(3), bM);
+  expect("Confirm the 3-day booking", await call.post(`/api/bookings/${bM.id}/confirm`), 200);
+  const avM = expect("Free for all 3 days", await call.get(`/api/bookings/${bM.id}/available-employees`), 200);
+  check("employee 2 (booked tomorrow) not free for the 3 days", avM?.days === 3 && !avM.employees.some((e) => e.id === e2.id), avM);
+  const clashM = await call.post(`/api/bookings/${bM.id}/assign`, { employeeId: e2.id });
+  expect("Assign over another booking's day", clashM, 409);
+  check("says which booking clashes", clashM.body?.error?.includes(bB.bookingNo), clashM.body);
+  const empM = expect("New caregiver for this test", await admin.post("/api/employees", { branchId: kdw.id, firstName: "Multi", lastName: "Day", gender: "female", phone: "0711111199" }), 201);
+  const avM2 = expect("Free list again", await call.get(`/api/bookings/${bM.id}/available-employees`), 200);
+  check("new caregiver is free for all 3 days", avM2?.employees?.some((e) => e.id === empM.id));
+  expect("Assign the 3-day booking to a free caregiver", await call.post(`/api/bookings/${bM.id}/assign`, { employeeId: empM.id }), 200);
+  const bN = expect("1-day booking on day 2 of the 3", await call.post("/api/bookings", { ...home2, serviceDate: plus(2) }), 201);
+  expect("Confirm it", await call.post(`/api/bookings/${bN.id}/confirm`), 200);
+  expect("Caregiver is busy inside the 3 days", await call.post(`/api/bookings/${bN.id}/assign`, { employeeId: empM.id }), 409);
+  expect("Leave inside the 3 days blocked", await admin.post(`/api/employees/${empM.id}/leaves`, { fromDate: plus(3), toDate: plus(3) }), 409);
+  const short = expect("Shorten to 1 day while assigned", await call.patch(`/api/bookings/${bM.id}`, { days: 1 }), 200);
+  check("now 1 day", short?.days === 1 && short?.endDate === TOMORROW && short?.status === "assigned", short);
+  expect("Now the caregiver is free on day 2", await call.post(`/api/bookings/${bN.id}/assign`, { employeeId: empM.id }), 200);
+  const longer = await call.patch(`/api/bookings/${bM.id}`, { days: 3 });
+  expect("Can't lengthen over another booking", longer, 409);
+  check("explains the clash", longer.body?.error?.includes(bN.bookingNo), longer.body);
+  expect("Other details stay locked while assigned", await call.patch(`/api/bookings/${bM.id}`, { startTime: "09:00" }), 409);
+  expect("Deliver before the last day", await call.post(`/api/bookings/${bM.id}/deliver`), 400);
+  const lst = expect("Booking list by a middle day", await call.get(`/api/bookings?date=${plus(2)}&status=assigned`), 200);
+  check("finds the booking running that day", lst?.items?.some((b) => b.id === bN.id), lst?.items?.map((b) => b.bookingNo));
+  expect("Clean up: cancel", await call.post(`/api/bookings/${bM.id}/ignore`), 200);
+  expect("Clean up: cancel", await call.post(`/api/bookings/${bN.id}/ignore`), 200);
+
+  section("Branch manager workflow");
+  const gmgrUser = expect("Create GMP branch manager", await admin.post("/api/users", { name: "GMP Manager", email: "gmgr@test.lk", password: "Mgr@12345", role: "branch_manager", branchId: gmp.id }), 201);
+  const gmgr = client("gmp-manager");
+  expect("GMP manager login", await gmgr.login("gmgr@test.lk", "Mgr@12345"), 200);
+  check("GMP manager created", gmgrUser?.role === "branch_manager" && gmgrUser?.branchId === gmp.id, gmgrUser);
+  const mMe = expect("Manager /api/auth/me", await mgr.get("/api/auth/me"), 200);
+  check("manager permissions", ["createBooking", "useCallList", "assignEmployee", "markDelivered", "printInvoice", "manageEmployees", "manageCustomers", "saveReportsToDrive"].every((p) => mMe?.permissions?.includes(p)) && !mMe?.permissions?.includes("manageUsers"), mMe?.permissions);
+  expect("Manager still can't manage users", await mgr.get("/api/users"), 403);
+  expect("Manager searches all customers", await mgr.get("/api/customers?q=Other"), 200);
+  const mCust = expect("Manager registers a customer", await mgr.post("/api/customers", { firstName: "Branch", lastName: "Walkin", phone: "0778888777" }), 201);
+  const mPat = expect("Manager adds a patient", await mgr.post(`/api/customers/${mCust.id}/patients`, { firstName: "Walkin", lastName: "Patient", gender: "female" }), 201);
+  const hNew = { customerId: mCust.id, patientId: mPat.id, locationType: "home", serviceAddress: "9 Temple Rd" };
+  const bH = expect("Manager creates a booking", await mgr.post("/api/bookings", { ...hNew, serviceDate: plus(5) }), 201);
+  check("new booking has no branch yet", bH?.branchId === null && bH?.status === "pending", bH);
+  const gList = expect("Other branch manager sees the new booking", await gmgr.get(`/api/bookings/${bH.id}`), 200);
+  check("…pending", gList?.status === "pending");
+  const mCl = expect("Manager call list for that day", await mgr.get(`/api/call-list?date=${plus(5)}&view=pending`), 200);
+  check("call list shows it", mCl?.items?.some((b) => b.id === bH.id));
+  expect("Manager edits the pending booking", await mgr.patch(`/api/bookings/${bH.id}`, { notes: "Call before 9am" }), 200);
+  expect("Manager confirms it", await mgr.post(`/api/bookings/${bH.id}/confirm`), 200);
+  const mAv = expect("Manager: free employees", await mgr.get(`/api/bookings/${bH.id}/available-employees`), 200);
+  check("only own branch's employees offered", mAv?.employees?.length > 0 && mAv.employees.every((e) => e.branchId === kdw.id), mAv?.employees?.map((e) => e.branchName));
+  const mAll = expect("Manager: /api/employees/available", await mgr.get(`/api/employees/available?date=${plus(5)}&branchId=${gmp.id}`), 200);
+  check("branchId param can't widen it", mAll?.every?.((e) => e.branchId === kdw.id), mAll);
+  const xAssign = await mgr.post(`/api/bookings/${bH.id}/assign`, { employeeId: e3.id });
+  expect("Manager can't assign another branch's employee", xAssign, 403);
+  check("explains why", xAssign.body?.error?.includes("another branch"), xAssign.body);
+  const aH = expect("Manager assigns own employee", await mgr.post(`/api/bookings/${bH.id}/assign`, { employeeId: e1.id }), 200);
+  check("booking now belongs to KDW", aH?.branchId === kdw.id && aH?.status === "assigned", aH);
+  expect("GMP manager can no longer open it", await gmgr.get(`/api/bookings/${bH.id}`), 404);
+  expect("GMP manager can't reassign it", await gmgr.post(`/api/bookings/${bH.id}/assign`, { employeeId: e3.id }), 403);
+  expect("GMP manager can't cancel it", await gmgr.post(`/api/bookings/${bH.id}/ignore`), 403);
+  expect("Manager unassigns", await mgr.post(`/api/bookings/${bH.id}/unassign`), 200);
+  expect("GMP manager sees it again (no branch)", await gmgr.get(`/api/bookings/${bH.id}`), 200);
+  expect("GMP manager assigns own employee", await gmgr.post(`/api/bookings/${bH.id}/assign`, { employeeId: e3.id }), 200);
+  expect("KDW manager can't open it now", await mgr.get(`/api/bookings/${bH.id}`), 404);
+  expect("KDW manager can't touch GMP booking G", await mgr.post(`/api/bookings/${bG.id}/unassign`), 403);
+  const mWa = expect("GMP manager sends the booking on WhatsApp", await gmgr.post(`/api/bookings/${bH.id}/whatsapp`), 200);
+  check("booking WhatsApp link", mWa?.waUrl?.startsWith("https://wa.me/94778888777"), mWa?.waUrl);
+  expect("Clean up: GMP manager cancels H", await gmgr.post(`/api/bookings/${bH.id}/ignore`), 200);
+
+  // Register an employee, record leave, deliver a booking and run the invoice steps.
+  const mEmp = expect("Manager registers an employee (own branch)", await mgr.post("/api/employees", { branchId: kdw.id, firstName: "Branch", lastName: "Hire", gender: "female", phone: "0711111188" }), 201);
+  expect("Manager edits own employee", await mgr.patch(`/api/employees/${mEmp.id}`, { address: "Kadawatha" }), 200);
+  expect("Manager can't move an employee to another branch", await mgr.patch(`/api/employees/${mEmp.id}`, { branchId: gmp.id }), 403);
+  expect("Manager can't edit GMP employee", await mgr.patch(`/api/employees/${e3.id}`, { address: "x" }), 404);
+  const mLeave = expect("Manager records leave", await mgr.post(`/api/employees/${mEmp.id}/leaves`, { fromDate: plus(20), toDate: plus(21) }), 201);
+  expect("Manager deletes the leave", await mgr.del(`/api/leaves/${mLeave.id}`), 200);
+  const bJ = expect("Manager books today", await mgr.post("/api/bookings", { ...hNew, serviceDate: TODAY }), 201);
+  expect("…confirms", await mgr.post(`/api/bookings/${bJ.id}/confirm`), 200);
+  expect("…assigns the new employee", await mgr.post(`/api/bookings/${bJ.id}/assign`, { employeeId: mEmp.id }), 200);
+  const dJ = expect("Manager delivers", await mgr.post(`/api/bookings/${bJ.id}/deliver`), 200);
+  check("invoice created", dJ?.invoiceId > 0, dJ);
+  expect("GMP manager can't open the KDW invoice", await gmgr.get(`/api/invoices/${dJ.invoiceId}`), 404);
+  expect("Manager records the print", await mgr.post(`/api/invoices/${dJ.invoiceId}/print`), 200);
+  expect("Manager marks it printed", await mgr.post(`/api/invoices/${dJ.invoiceId}/mark-printed`), 200);
+  expect("Manager sends the invoice on WhatsApp", await mgr.post(`/api/invoices/${dJ.invoiceId}/whatsapp`), 200);
+  expect("Manager deactivates own employee", await mgr.patch(`/api/employees/${mEmp.id}`, { status: "inactive" }), 200);
+  expect("Logout GMP manager", await gmgr.post("/api/auth/logout"), 200);
+
+  section("Sidebar search");
+  const sr = expect("Search a booking number", await admin.get(`/api/search?q=${bA.bookingNo}`), 200);
+  check("finds the booking", sr?.bookings?.some((b) => b.bookingNo === bA.bookingNo), sr);
+  const sc = expect("Search a customer phone (+94 form)", await admin.get("/api/search?q=%2B94%2077%20999%209999"), 200);
+  check("finds the customer by phone", sc?.customers?.some((c) => c.id === cust2.id), sc);
+  const se = expect("Search an employee", await admin.get("/api/search?q=Sunil"), 200);
+  check("finds the employee", se?.employees?.some((e) => e.id === e3.id), se);
+  const s1 = expect("One letter", await admin.get("/api/search?q=S"), 200);
+  check("1 letter → nothing", s1?.bookings?.length === 0 && s1.customers.length === 0 && s1.employees.length === 0);
+  check("% is a normal character", (await admin.get("/api/search?q=%25%25")).data?.employees?.length === 0);
+  const sm = expect("Manager searches GMP employee", await mgr.get("/api/search?q=Sunil"), 200);
+  check("manager doesn't find other branch's employee", sm?.employees?.length === 0, sm);
+  const smb = expect("Manager searches GMP booking", await mgr.get(`/api/search?q=${bG.bookingNo}`), 200);
+  check("manager doesn't find other branch's booking", smb?.bookings?.length === 0, smb);
+  expect("No login: search", await anon.get("/api/search?q=test"), 401);
 
   section("Account control");
   expect("Disable call-center user", await admin.patch(`/api/users/${callUser.id}`, { isActive: false }), 200);

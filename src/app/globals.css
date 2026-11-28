@@ -119,6 +119,16 @@ body {
   }
 }
 
+/* A box that appears (e.g. the WhatsApp number when both phone ticks are off). */
+.pop-in {
+  animation: journey-in 0.3s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-in {
+    animation: none;
+  }
+}
+
 /* Thin, quiet scrollbars inside panels */
 .scroll-thin {
   scrollbar-width: thin;

@@ -1,12 +1,14 @@
 import { HeartPulse } from "lucide-react";
-import { hospitalPlace } from "@/lib/lk-rules";
+import { hospitalPlace, whatsappNumberOf } from "@/lib/lk-rules";
 import { notFound } from "next/navigation";
-import { money, niceDate, niceTime } from "@/components/ui";
+import { money, niceDate, nicePeriod, niceTime } from "@/components/ui";
+import { linkSummary } from "@/features/invoices/links";
 import { getInvoice } from "@/features/invoices/service";
 import { requirePermission } from "@/lib/dal";
 import { NotFoundError } from "@/lib/errors";
 import { hasPermission } from "@/lib/permissions";
 import { InvoiceToolbar } from "./invoice-toolbar";
+import { WhatsappShare } from "@/components/app/whatsapp-share";
 
 export const metadata = { title: "Invoice · Care Booking" };
 
@@ -20,11 +22,27 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
     throw e;
   });
 
+  const links = await linkSummary(inv.id);
   const where = inv.locationType === "hospital" ? hospitalPlace(inv.hospitalName, inv.wardNo, inv.bedNo, ", ") : inv.serviceAddress;
 
   return (
     <div className="mx-auto max-w-[820px]">
-      <InvoiceToolbar id={inv.id} invoiceNo={inv.invoiceNo} status={inv.status} canPrint={hasPermission(user, "printInvoice")} />
+      <InvoiceToolbar
+        id={inv.id}
+        invoiceNo={inv.invoiceNo}
+        status={inv.status}
+        canPrint={hasPermission(user, "printInvoice")}
+        whatsapp={
+          <WhatsappShare
+            kind="invoice"
+            id={inv.id}
+            docNo={inv.invoiceNo}
+            customerId={inv.customerId}
+            number={whatsappNumberOf({ phone: inv.customerPhone, altPhone: inv.customerAltPhone, phoneWhatsapp: inv.phoneWhatsapp, altPhoneWhatsapp: inv.altPhoneWhatsapp, whatsappPhone: inv.whatsappPhone })}
+            summary={{ ...links, activeUntil: links.activeUntil?.toISOString() ?? null, lastViewed: links.lastViewed?.toISOString() ?? null }}
+          />
+        }
+      />
 
       <article className="rounded-md bg-white px-12 py-12 text-[13px] text-slate-800 shadow-[0_20px_60px_-25px_rgba(30,27,75,0.35)] print:rounded-none print:px-0 print:py-0 print:shadow-none">
         {/* Header */}
@@ -85,12 +103,16 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
           <tbody>
             <tr className="border-b border-slate-100 align-top">
               <td className="py-4 pr-4">
-                <div className="font-medium text-slate-900">{inv.packageName ? `${inv.packageName} · ` : ""}{inv.durationHours}-hour care session</div>
+                <div className="font-medium text-slate-900">
+                  {inv.packageName ? `${inv.packageName} · ` : ""}
+                  {inv.durationHours}-hour care session{inv.days > 1 ? ` × ${inv.days} days` : ""}
+                </div>
                 <div className="mt-0.5 text-slate-500">
-                  {niceDate(inv.serviceDate)} from {niceTime(inv.startTime)} · {inv.locationType === "hospital" ? "Hospital" : "Home"}: {where}
+                  {nicePeriod(inv.serviceDate, inv.days)} from {niceTime(inv.startTime)}
+                  {inv.days > 1 ? " each day" : ""} · {inv.locationType === "hospital" ? "Hospital" : "Home"}: {where}
                 </div>
               </td>
-              <td className="py-4 text-right">{Number(inv.qty)}</td>
+              <td className="py-4 text-right">{inv.days > 1 ? `${Number(inv.qty)} days` : Number(inv.qty)}</td>
               <td className="py-4 text-right">{money(inv.rate)}</td>
               <td className="py-4 text-right font-medium">{money(inv.amount)}</td>
             </tr>

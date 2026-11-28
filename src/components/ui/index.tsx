@@ -142,7 +142,12 @@ export function Pill({ children, className }: { children: ReactNode; className?:
 
 // ---------------------------------------------------------------- Avatar
 const AVATAR_COLORS = ["bg-indigo-500", "bg-violet-500", "bg-sky-500", "bg-emerald-500", "bg-amber-500", "bg-rose-500"];
-export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
+export function Avatar({ name, size = "md", src }: { name: string; size?: "sm" | "md" | "lg"; src?: string | null }) {
+  const box = size === "sm" ? "h-7 w-7 text-[10px]" : size === "lg" ? "h-16 w-16 text-lg" : "h-9 w-9 text-xs";
+  if (src) {
+    // eslint-disable-next-line @next/next/no-img-element -- photo from our own API (needs the login cookie)
+    return <img src={src} alt={name} className={cn("shrink-0 rounded-full object-cover ring-2 ring-white/80", box)} />;
+  }
   const initials = name
     .split(/\s+/)
     .filter((w) => /[A-Za-z]/.test(w[0] ?? ""))
@@ -150,17 +155,12 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md"
     .map((w) => w[0]!.toUpperCase())
     .join("");
   const color = AVATAR_COLORS[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length];
-  return (
-    <span
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white ring-2 ring-white/80",
-        color,
-        size === "sm" ? "h-7 w-7 text-[10px]" : "h-9 w-9 text-xs",
-      )}
-    >
-      {initials || "?"}
-    </span>
-  );
+  return <span className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white ring-2 ring-white/80", color, box)}>{initials || "?"}</span>;
+}
+
+/** URL of an employee's photo (or null), with ?v= so a changed photo is reloaded. */
+export function employeePhotoUrl(e: { id: number; photoAt: Date | string | null }) {
+  return e.photoAt ? `/api/employees/${e.id}/photo?v=${new Date(e.photoAt).getTime()}` : null;
 }
 
 // ---------------------------------------------------------------- Page header
@@ -222,6 +222,33 @@ export function niceDate(iso: string | null | undefined) {
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
+
+/** "5 Dec 2026" for one day, "5 – 9 Dec 2026" / "30 Nov – 4 Dec 2026" for several. */
+export function nicePeriod(start: string | null | undefined, days: number | null | undefined) {
+  if (!start) return "—";
+  const n = Math.max(1, Number(days ?? 1));
+  if (n === 1) return niceDate(start);
+  const [y, m, d] = start.slice(0, 10).split("-").map(Number);
+  const a = new Date(Date.UTC(y, m - 1, d));
+  const b = new Date(Date.UTC(y, m - 1, d + n - 1));
+  const opts = (o: Intl.DateTimeFormatOptions) => ({ ...o, timeZone: "UTC" });
+  const left =
+    a.getUTCFullYear() !== b.getUTCFullYear()
+      ? a.toLocaleDateString("en-GB", opts({ day: "numeric", month: "short", year: "numeric" }))
+      : a.getUTCMonth() !== b.getUTCMonth()
+        ? a.toLocaleDateString("en-GB", opts({ day: "numeric", month: "short" }))
+        : String(a.getUTCDate());
+  return `${left} – ${b.toLocaleDateString("en-GB", opts({ day: "numeric", month: "short", year: "numeric" }))}`;
+}
+
+/** A small "5 days" tag next to a booking's date (nothing for 1-day bookings). */
+export function DaysTag({ days }: { days: number | null | undefined }) {
+  if (!days || days <= 1) return null;
+  return <span className="ml-1.5 rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent">{days} days</span>;
+}
+
+/** "1 day" / "5 days" */
+export const dayCount = (days: number | null | undefined) => `${Math.max(1, Number(days ?? 1))} day${Number(days ?? 1) > 1 ? "s" : ""}`;
 
 export function niceTime(t: string | null | undefined) {
   if (!t) return "—";

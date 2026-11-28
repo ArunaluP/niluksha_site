@@ -10,6 +10,9 @@
     "create-user": "tsx --env-file=.env.local scripts/create-user.ts",
     "typecheck": "tsc --noEmit",
     "db:check": "tsx --env-file=.env.local scripts/check-db.ts",
+    "db:migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "db:reset": "tsx --env-file=.env.local scripts/reset-db.ts",
+    "db:delete-since": "tsx --env-file=.env.local scripts/delete-since.ts",
     "test:api": "node scripts/test-api.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "seed:staff": "node scripts/seed-staff.mjs"
@@ -17,10 +20,12 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.4",
+    "exceljs": "^4.4.0",
     "jose": "^6.2.18",
     "lucide-react": "^1.77.0",
     "mysql2": "^3.24.6",
     "next": "16.4.6",
+    "pdf-lib": "^1.17.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",

@@ -118,19 +118,35 @@ export function ActionButton<I, R>({
 }
 
 // ---------------------------------------------------------------- Nav link
-export function NavLink({ href, icon, children, exact }: { href: string; icon: ReactNode; children: ReactNode; exact?: boolean }) {
+export function NavLink({
+  href,
+  icon,
+  children,
+  exact,
+  collapsed,
+}: {
+  href: string;
+  icon: ReactNode;
+  children: ReactNode;
+  exact?: boolean;
+  /** Icon only (collapsed sidebar); the name shows on hover. */
+  collapsed?: boolean;
+}) {
   const pathname = usePathname();
   const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
   return (
     <Link
       href={href}
+      title={collapsed && typeof children === "string" ? children : undefined}
+      aria-label={collapsed && typeof children === "string" ? children : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition",
+        "flex items-center rounded-xl py-2 text-[13px] font-medium transition",
+        collapsed ? "justify-center px-0" : "gap-3 px-3",
         active ? "bg-accent-soft/90 text-accent shadow-[inset_0_0_0_1px_rgba(102,88,245,0.12)]" : "text-ink/70 hover:bg-white/60 hover:text-ink",
       )}
     >
       <span className={active ? "text-accent" : "text-muted"}>{icon}</span>
-      {children}
+      {!collapsed && children}
     </Link>
   );
 }

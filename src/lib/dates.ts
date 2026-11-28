@@ -24,6 +24,28 @@ export function addDays(isoDate: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/** A booking can run 1-30 days in a row. */
+export const MAX_BOOKING_DAYS = 30;
+
+/** Last day of a booking: start + days - 1. */
+export function endDateOf(start: string, days: number): string {
+  return addDays(start, Math.max(1, days) - 1);
+}
+
 export function currentYear(): number {
   return Number(today().slice(0, 4));
+}
+
+/**
+ * Start of a Sri Lanka calendar day as a UTC DATETIME string, for comparing with
+ * DATETIME columns (stored in UTC). Sri Lanka is UTC+05:30 all year (no DST).
+ *   lkDayStartUtc('2026-11-25') -> '2026-11-24 18:30:00'
+ */
+export function lkDayStartUtc(isoDate: string): string {
+  return `${addDays(isoDate, -1)} 18:30:00`;
+}
+
+/** A DATETIME value read as text ('YYYY-MM-DD HH:MM:SS', stored in UTC) -> Date. */
+export function utcDate(v: string | Date): Date {
+  return v instanceof Date ? v : new Date(`${String(v).replace(" ", "T")}Z`);
 }

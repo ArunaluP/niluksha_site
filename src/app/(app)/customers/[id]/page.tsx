@@ -1,22 +1,23 @@
-import { ArrowLeft, Cake, CalendarPlus, Home, IdCard, Mail, Phone } from "lucide-react";
+import { ArrowLeft, Cake, CalendarPlus, Home, IdCard, Mail, MessageCircle, Phone } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EntityFormButton, type FieldDef } from "@/components/app/entity-form";
-import { Avatar, Card, CardHeader, EmptyState, LinkButton, money, niceDate, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Avatar, Card, CardHeader, DaysTag, EmptyState, LinkButton, money, niceDate, nicePeriod, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { getCustomer } from "@/features/customers/service";
 import { requirePermission } from "@/lib/dal";
 import { NotFoundError } from "@/lib/errors";
 import { addPatientAction } from "../../_actions/bookings";
 import { NAME_FIELD_DEFS, nameInitial } from "@/components/app/name-field-defs";
-import { RELATIONSHIP_OTHER_MAX, relationshipLabel, selfPatientValues } from "@/lib/lk-rules";
+import { RELATIONSHIP_OTHER_MAX, relationshipLabel, selfPatientValues, whatsappNumberOf } from "@/lib/lk-rules";
 import { updateCustomerAction, updatePatientAction } from "../../_actions/records";
 
 export const metadata = { title: "Customer · Care Booking" };
 
 const CUSTOMER_FIELDS: FieldDef[] = [
   ...NAME_FIELD_DEFS,
-  { name: "phone", label: "Phone", required: true },
-  { name: "altPhone", label: "Other phone" },
+  { name: "phone", label: "Phone", required: true, whatsapp: "phoneWhatsapp", full: true },
+  { name: "altPhone", label: "Other phone", whatsapp: "altPhoneWhatsapp", full: true },
+  { name: "whatsappPhone", label: "WhatsApp number", whatsappFallback: true },
   { name: "email", label: "Email", type: "email", placeholder: "Optional, e.g. name@gmail.com", maxLength: 160, full: true },
   { name: "nic", label: "NIC", nic: true, placeholder: "199012345678 or 901234567V" },
   { name: "dob", label: "Date of birth", type: "date", hint: "Filled from the NIC" },
@@ -52,6 +53,7 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
     if (e instanceof NotFoundError) notFound();
     throw e;
   });
+  const waNumber = whatsappNumberOf(c);
   // Patient relationship "Customer themself" → copy this customer's details
   const selfFill = { field: "relationship", value: "self", values: selfPatientValues(c) };
 
@@ -76,7 +78,7 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
             mode="edit"
             title="Edit customer"
             fields={CUSTOMER_FIELDS}
-            initial={{ ...nameInitial(c), phone: c.phone, altPhone: c.altPhone ?? "", email: c.email ?? "", nic: c.nic ?? "", dob: c.dob ?? "", city: c.city ?? "", address: c.address ?? "", notes: c.notes ?? "" }}
+            initial={{ ...nameInitial(c), phone: c.phone, altPhone: c.altPhone ?? "", phoneWhatsapp: c.phoneWhatsapp, altPhoneWhatsapp: c.altPhoneWhatsapp, whatsappPhone: c.whatsappPhone ?? "", email: c.email ?? "", nic: c.nic ?? "", dob: c.dob ?? "", city: c.city ?? "", address: c.address ?? "", notes: c.notes ?? "" }}
             extra={{ id: c.id }}
             action={updateCustomerAction}
             success="Customer updated"
@@ -96,6 +98,16 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
                 <Phone size={14} className="text-accent" />
                 <a href={`tel:${c.phone}`}>{c.phone}</a>
                 {c.altPhone && <span className="text-muted">/ {c.altPhone}</span>}
+              </div>
+              <div className="flex items-center gap-2.5">
+                <MessageCircle size={14} className="text-[#1fa855]" />
+                {waNumber ? (
+                  <span>
+                    {waNumber} <span className="text-muted">· WhatsApp (invoices)</span>
+                  </span>
+                ) : (
+                  <span className="text-muted">No WhatsApp number</span>
+                )}
               </div>
               {c.email && (
                 <div className="flex items-center gap-2.5">
@@ -186,7 +198,10 @@ export default async function CustomerPage({ params }: PageProps<"/customers/[id
                       <Link href={`/bookings/${b.bookingNo}`} className="font-medium text-accent hover:underline">
                         {b.bookingNo}
                       </Link>
-                      <div className="text-xs text-muted">{niceDate(b.serviceDate)}</div>
+                      <div className="text-xs text-muted">
+                        {nicePeriod(b.serviceDate, b.days)}
+                        <DaysTag days={b.days} />
+                      </div>
                     </Td>
                     <Td>{b.patientName}</Td>
                     <Td className="text-muted">{b.employeeName ?? "—"}</Td>

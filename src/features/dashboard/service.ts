@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { BOOKING_STATUSES, type BookingStatus, bookings, bookingStatusLogs, customers, employees, invoices, patients, users } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
 import { addDays, today } from "@/lib/dates";
-import { branchScope } from "@/lib/permissions";
+import { assignableBranch, bookingScope, branchScope } from "@/lib/permissions";
 import { listAvailableEmployees } from "../employees/service";
 
 function emptyStatusMap() {
@@ -17,7 +17,8 @@ export async function getDashboard(date: string, user: CurrentUser) {
     db
       .select({ status: bookings.status, total: count() })
       .from(bookings)
-      .where(and(eq(bookings.serviceDate, date), branchScope(user, bookings.branchId)))
+      // bookings running on this day (a multi-day booking counts on each of its days)
+      .where(and(lte(bookings.serviceDate, date), gte(bookings.endDate, date), bookingScope(user, bookings.branchId)))
       .groupBy(bookings.status),
     db
       .select({ total: count(), amount: sum(invoices.amount) })
@@ -44,9 +45,10 @@ export async function getDashboard(date: string, user: CurrentUser) {
 /** Everything the dashboard screen shows, in one call. */
 export async function getDashboardScreen(user: CurrentUser) {
   const t = today();
-  const weekEnd = addDays(t, 6);
+  const OUTLOOK_DAYS = 15;
+  const weekEnd = addDays(t, OUTLOOK_DAYS - 1);
   const monthStart = `${t.slice(0, 7)}-01`;
-  const scope = branchScope(user, bookings.branchId);
+  const scope = bookingScope(user, bookings.branchId);
 
   const [summary, weekRows, monthRows, schedule, activity, free] = await Promise.all([
     getDashboard(t, user),
@@ -64,6 +66,8 @@ export async function getDashboardScreen(user: CurrentUser) {
       .select({
         id: bookings.id,
         bookingNo: bookings.bookingNo,
+        serviceDate: bookings.serviceDate,
+        days: bookings.days,
         startTime: bookings.startTime,
         status: bookings.status,
         locationType: bookings.locationType,
@@ -75,7 +79,7 @@ export async function getDashboardScreen(user: CurrentUser) {
       .innerJoin(customers, eq(customers.id, bookings.customerId))
       .innerJoin(patients, eq(patients.id, bookings.patientId))
       .leftJoin(employees, eq(employees.id, bookings.employeeId))
-      .where(and(eq(bookings.serviceDate, t), ne(bookings.status, "ignored"), scope))
+      .where(and(lte(bookings.serviceDate, t), gte(bookings.endDate, t), ne(bookings.status, "ignored"), scope))
       .orderBy(asc(bookings.startTime))
       .limit(6),
     db
@@ -93,11 +97,11 @@ export async function getDashboardScreen(user: CurrentUser) {
       .where(scope)
       .orderBy(desc(bookingStatusLogs.id))
       .limit(6),
-    listAvailableEmployees(t, user.role === "branch_manager" ? (user.branchId ?? -1) : undefined),
+    listAvailableEmployees(t, assignableBranch(user)),
   ]);
 
-  // 7-day outlook: days × statuses
-  const days = Array.from({ length: 7 }, (_, i) => addDays(t, i));
+  // 15-day outlook: days × statuses (the "Next 7 days" card uses the first 7)
+  const days = Array.from({ length: OUTLOOK_DAYS }, (_, i) => addDays(t, i));
   const week = days.map((d): { date: string; total: number } & Record<BookingStatus, number> => {
     const row = emptyStatusMap();
     for (const r of weekRows.filter((w) => w.date === d)) row[r.status] = r.total;

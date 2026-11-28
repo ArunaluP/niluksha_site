@@ -4,7 +4,7 @@ import * as z from "zod";
 import { db } from "@/db";
 import { bookings, bookingStatusLogs, branches, customers, employees, invoices, patients, users } from "@/db/schema";
 import type { CurrentUser } from "@/lib/dal";
-import { addDays, today } from "@/lib/dates";
+import { addDays, lkDayStartUtc, today, utcDate } from "@/lib/dates";
 import { branchScope } from "@/lib/permissions";
 import { id, isoDate, pageParams, pagination } from "@/lib/validation";
 import { classifyEvent, daysBetween, EVENT_KEYS, EVENT_RULES, eventFilterKeys, periodLabel, type EventKey, type EventRule } from "./events";
@@ -72,14 +72,14 @@ function eventCase(): SQL<EventKey | null> {
 }
 
 /**
- * Period + who-may-see-what. Half-open range on created_at (stored in Sri Lanka time):
- * created_at >= 'from 00:00:00' AND created_at < 'to+1 00:00:00'  (uses idx_logs_created).
+ * Period + who-may-see-what. Half-open range on created_at (stored in UTC), covering
+ * whole Sri Lanka days: created_at >= start of 'from' AND < start of 'to + 1' (uses idx_logs_created).
  */
 function scopeWhere(user: CurrentUser, q: ReportQueryInput): SQL {
   const branchId = user.role === "admin" ? q.branchId : undefined;
   return and(
-    sql`${logs.createdAt} >= ${`${q.from} 00:00:00`}`,
-    sql`${logs.createdAt} < ${`${addDays(q.to, 1)} 00:00:00`}`,
+    sql`${logs.createdAt} >= ${lkDayStartUtc(q.from)}`,
+    sql`${logs.createdAt} < ${lkDayStartUtc(addDays(q.to, 1))}`,
     branchScope(user, bookings.branchId),
     branchId ? eq(bookings.branchId, branchId) : undefined,
   )!;
@@ -164,14 +164,14 @@ export async function listActivityEvents(user: CurrentUser, q: ReportQueryInput,
     ? await db
         .select({ bookingId: logs.bookingId, fromStatus: logs.fromStatus, toStatus: logs.toStatus })
         .from(logs)
-        .where(and(inArray(logs.bookingId, ids), sql`${logs.createdAt} >= ${`${q.from} 00:00:00`}`, sql`${logs.createdAt} < ${`${addDays(q.to, 1)} 00:00:00`}`))
+        .where(and(inArray(logs.bookingId, ids), sql`${logs.createdAt} >= ${lkDayStartUtc(q.from)}`, sql`${logs.createdAt} < ${lkDayStartUtc(addDays(q.to, 1))}`))
         .orderBy(asc(logs.id))
     : [];
   const steps = new Map<number, (EventKey | null)[]>();
   for (const t of trail) steps.set(t.bookingId, [...(steps.get(t.bookingId) ?? []), classifyEvent(t.fromStatus, t.toStatus)]);
 
   return {
-    items: items.map((r) => ({ ...r, at: new Date(`${String(r.at).replace(" ", "T")}+05:30`), event: classifyEvent(r.fromStatus, r.toStatus), steps: steps.get(r.bookingId) ?? [] })),
+    items: items.map((r) => ({ ...r, at: utcDate(r.at), event: classifyEvent(r.fromStatus, r.toStatus), steps: steps.get(r.bookingId) ?? [] })),
     total,
   };
 }

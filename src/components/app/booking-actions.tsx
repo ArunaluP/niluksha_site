@@ -10,7 +10,7 @@ import {
   confirmBookingAction,
   ignoreBookingAction,
 } from "@/app/(app)/_actions/bookings";
-import { Avatar, Button, cn, Field, Input, Select, Textarea } from "@/components/ui";
+import { Avatar, Button, cn, Field, Input, nicePeriod, Select, Textarea } from "@/components/ui";
 import { Dialog } from "@/components/ui/client";
 
 type Free = { id: number; empNo: string; fullName: string; gender: string; phone: string; designation: string; branchId: number; branchName: string };
@@ -119,6 +119,7 @@ export function AssignButton({
 }) {
   const [open, setOpen] = useState(false);
   const [list, setList] = useState<Free[] | null>(null);
+  const [period, setPeriod] = useState<string>(serviceDate);
   const [q, setQ] = useState("");
   const [type, setType] = useState("all");
   const [selected, setSelected] = useState<number | null>(null);
@@ -132,8 +133,10 @@ export function AssignButton({
     setList(null);
     startLoad(async () => {
       const r = await availableEmployeesAction({ id: bookingId });
-      if (r.ok) setList(r.data.employees as Free[]);
-      else toast.error(r.error);
+      if (r.ok) {
+        setList(r.data.employees as Free[]);
+        setPeriod(r.data.days > 1 ? `every day ${nicePeriod(r.data.date, r.data.days)} (${r.data.days} days)` : String(r.data.date));
+      } else toast.error(r.error);
     });
   }
 
@@ -154,7 +157,7 @@ export function AssignButton({
       <Button variant={variant} size={size} onClick={openDialog}>
         <UserCheck size={14} /> {label ?? (currentEmployeeId ? "Change" : "Assign")}
       </Button>
-      <Dialog open={open} onClose={() => setOpen(false)} title={`${currentEmployeeId ? "Reassign" : "Assign"} ${bookingNo}`} subtitle={`Free caregivers & nurses on ${serviceDate}, all branches`} wide>
+      <Dialog open={open} onClose={() => setOpen(false)} title={`${currentEmployeeId ? "Reassign" : "Assign"} ${bookingNo}`} subtitle={`Free caregivers & nurses on ${period}`} wide>
         <div className="mb-4 flex flex-wrap gap-2">
           <div className="relative min-w-[220px] flex-1">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />

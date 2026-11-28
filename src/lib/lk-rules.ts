@@ -26,6 +26,38 @@ export function normalizePhone(raw: string): string | null {
 
 export const PHONE_ERROR = "Enter a valid Sri Lankan number, e.g. 0771234567 or 0112345678.";
 
+// ------------------------------------------------------------------ WhatsApp
+export const WHATSAPP_ERROR = "Enter a Sri Lankan mobile number for WhatsApp, e.g. 0771234567.";
+
+/** A WhatsApp number must be a mobile (07X). Returns 0XXXXXXXXX or null. */
+export function normalizeMobile(raw: string): string | null {
+  const n = normalizePhone(raw);
+  return n && MOBILE.test(n) ? n : null;
+}
+
+type WhatsappTicks = { phone: string; altPhone?: string | null; phoneWhatsapp?: boolean; altPhoneWhatsapp?: boolean; whatsappPhone?: string | null };
+
+/** True when a ticked phone box has a number, i.e. the separate WhatsApp box is not needed. */
+export function tickedPhoneHasNumber(c: WhatsappTicks): boolean {
+  return Boolean((c.phoneWhatsapp !== false && c.phone?.trim()) || (c.altPhoneWhatsapp !== false && c.altPhone?.trim()));
+}
+
+/**
+ * The number invoices go to on WhatsApp: the main phone if ticked, else the other
+ * phone if ticked, else the separate WhatsApp number. null = no WhatsApp.
+ */
+export function whatsappNumberOf(c: WhatsappTicks): string | null {
+  if (c.phoneWhatsapp !== false && c.phone) return c.phone;
+  if (c.altPhoneWhatsapp !== false && c.altPhone) return c.altPhone;
+  return c.whatsappPhone || null;
+}
+
+/** 0771234567 -> 94771234567 (the international form wa.me needs). */
+export function waDigits(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  return d.startsWith("0") ? `94${d.slice(1)}` : d;
+}
+
 // ------------------------------------------------------------------ email
 export const EMAIL_MAX = 160;
 /**
@@ -202,6 +234,10 @@ export type CustomerFields = {
   lastName: string;
   phone: string;
   altPhone: string;
+  /** WhatsApp ticks next to the phone boxes, and the WhatsApp box shown when neither is ticked. */
+  phoneWhatsapp?: boolean;
+  altPhoneWhatsapp?: boolean;
+  whatsappPhone?: string;
   email: string;
   nic: string;
   dob: string;
@@ -222,6 +258,8 @@ export function checkCustomer(f: CustomerFields): Partial<Record<keyof CustomerF
     if (!alt) e.altPhone = PHONE_ERROR;
     else if (alt === phone) e.altPhone = "Other phone must be different from the main number.";
   }
+
+  if (!tickedPhoneHasNumber(f) && f.whatsappPhone?.trim() && !normalizeMobile(f.whatsappPhone)) e.whatsappPhone = WHATSAPP_ERROR;
 
   if (f.email.trim()) {
     const m = checkEmail(f.email);

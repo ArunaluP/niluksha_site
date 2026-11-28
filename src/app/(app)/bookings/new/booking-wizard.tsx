@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, HeartPulse, Home, Hospital, Phone, Plus, Search, UserPlus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, HeartPulse, Home, Hospital, Phone, Plus, Printer, Search, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -11,8 +11,12 @@ import {
   getCustomerAction,
   searchCustomersAction,
 } from "@/app/(app)/_actions/bookings";
-import { Avatar, Button, cn, Field, Input, LinkButton, money, niceDate, niceTime, Select, Textarea } from "@/components/ui";
+import { Avatar, Button, cn, dayCount, Field, Input, LinkButton, money, niceDate, nicePeriod, niceTime, Select, Textarea } from "@/components/ui";
+import { DaysStepper } from "@/components/app/days-stepper";
+import { endDateOf } from "@/lib/dates";
 import { NameFields } from "@/components/app/name-fields";
+import { PhoneWithWhatsapp, WhatsappNumberField } from "@/components/app/whatsapp-phone";
+import { WhatsappShare } from "@/components/app/whatsapp-share";
 import {
   checkCustomer,
   checkNameParts,
@@ -25,6 +29,7 @@ import {
   RELATIONSHIP_OTHER_MAX,
   relationshipLabel,
   selfPatientValues,
+  tickedPhoneHasNumber,
   type CustomerFields,
 } from "@/lib/lk-rules";
 
@@ -59,14 +64,18 @@ export function BookingWizard({
   const [step, setStep] = useState<0 | 1 | 2 | 3>(initialCustomer ? 1 : 0);
   const [customer, setCustomer] = useState<Customer | null>(initialCustomer);
   const [patientId, setPatientId] = useState<number | "new" | null>(initialCustomer?.patients[0]?.id ?? null);
-  const [done, setDone] = useState<{ id: number; bookingNo: string } | null>(null);
+  const [done, setDone] = useState<{ id: number; bookingNo: string; customerId: number; whatsappNumber: string | null } | null>(null);
   const [pending, start] = useTransition();
 
   // ---------------- step 1: customer
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [newCust, setNewCust] = useState(false);
-  const [cust, setCust] = useState({ firstName: "", middleName: "", lastName: "", phone: "", altPhone: "", email: "", nic: "", dob: "", address: "", city: "" });
+  const [cust, setCust] = useState({ firstName: "", middleName: "", lastName: "", phone: "", altPhone: "", whatsappPhone: "", email: "", nic: "", dob: "", address: "", city: "" });
+  // WhatsApp ticks in front of the phone boxes: on by default.
+  const [wa, setWa] = useState({ phoneWhatsapp: true, altPhoneWhatsapp: true });
+  const custAll = { ...cust, ...wa };
+  const needsWaBox = !tickedPhoneHasNumber(custAll);
   const [custErr, setCustErr] = useState<Errors>({});
 
   useEffect(() => {
@@ -96,7 +105,7 @@ export function BookingWizard({
 
   /** Re-checks one field when the user leaves it (only once it has an error or a value). */
   function checkCustField(name: keyof CustomerFields) {
-    const e = checkCustomer(cust)[name];
+    const e = checkCustomer(custAll)[name];
     if (e) setCustErr((prev) => ({ ...prev, [name]: [e] }));
   }
 
@@ -114,14 +123,15 @@ export function BookingWizard({
   const nicHint = nicInfo && !("error" in nicInfo) ? `${nicInfo.gender === "male" ? "Male" : "Female"} · born ${niceDate(nicInfo.dob)}` : undefined;
 
   function saveCustomer() {
-    const e = checkCustomer(cust);
+    const e = checkCustomer(custAll);
     if (Object.keys(e).length) {
       setCustErr(Object.fromEntries(Object.entries(e).map(([k, v]) => [k, [v]])));
       toast.error("Please fix the highlighted fields.");
       return;
     }
     start(async () => {
-      const r = await createCustomerAction(clean(cust));
+      const { whatsappPhone, ...rest } = clean(cust);
+      const r = await createCustomerAction({ ...rest, ...wa, ...(needsWaBox && whatsappPhone ? { whatsappPhone } : {}) });
       if (!r.ok) {
         setCustErr(r.fieldErrors ?? {});
         toast.error(r.error);
@@ -175,7 +185,7 @@ export function BookingWizard({
 
   // ---------------- step 3: session
   const defaultPackageId = String((packages.find((p) => p.isDefault) ?? packages[0])?.id ?? "");
-  const [ses, setSes] = useState({ packageId: defaultPackageId, serviceDate: today, startTime: "08:00", locationType: "home" as "home" | "hospital", hospitalId: "", wardNo: "", bedNo: "", serviceAddress: "", notes: "" });
+  const [ses, setSes] = useState({ packageId: defaultPackageId, serviceDate: today, days: 1, startTime: "08:00", locationType: "home" as "home" | "hospital", hospitalId: "", wardNo: "", bedNo: "", serviceAddress: "", notes: "" });
   const selectedPackage = packages.find((p) => String(p.id) === ses.packageId) ?? null;
   // "08:00" + 12 h → "20:00"; past midnight → next day
   const [sh, sm] = ses.startTime.split(":").map(Number);
@@ -201,6 +211,7 @@ export function BookingWizard({
         patientId: patient!.id,
         packageId: ses.packageId ? Number(ses.packageId) : undefined,
         serviceDate: ses.serviceDate,
+        days: ses.days,
         startTime: ses.startTime,
         locationType: ses.locationType,
         hospitalId: ses.locationType === "hospital" && ses.hospitalId ? Number(ses.hospitalId) : undefined,
@@ -222,7 +233,7 @@ export function BookingWizard({
 
   function reset(keepCustomer: boolean) {
     setDone(null);
-    setSes({ packageId: defaultPackageId, serviceDate: today, startTime: "08:00", locationType: "home", hospitalId: "", wardNo: "", bedNo: "", serviceAddress: "", notes: "" });
+    setSes({ packageId: defaultPackageId, serviceDate: today, days: 1, startTime: "08:00", locationType: "home", hospitalId: "", wardNo: "", bedNo: "", serviceAddress: "", notes: "" });
     setSesErr({});
     if (keepCustomer) return setStep(1);
     setCustomer(null);
@@ -333,12 +344,36 @@ export function BookingWizard({
                     errors={custErr}
                     onBlur={(k) => checkCustField(k)}
                   />
-                  <Field label="Phone number" required error={custErr.phone}>
-                    <Input value={cust.phone} onChange={(e) => editCust({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} onBlur={() => checkCustField("phone")} inputMode="tel" maxLength={16} placeholder="0771234567" />
-                  </Field>
-                  <Field label="Other phone" error={custErr.altPhone}>
-                    <Input value={cust.altPhone} onChange={(e) => editCust({ altPhone: e.target.value.replace(/[^\d+\s-]/g, "") })} onBlur={() => checkCustField("altPhone")} inputMode="tel" maxLength={16} placeholder="Optional" />
-                  </Field>
+                  <PhoneWithWhatsapp
+                    label="Phone number"
+                    required
+                    value={cust.phone}
+                    onChange={(v) => editCust({ phone: v })}
+                    onBlur={() => checkCustField("phone")}
+                    whatsapp={wa.phoneWhatsapp}
+                    onWhatsapp={(on) => setWa((w) => ({ ...w, phoneWhatsapp: on }))}
+                    error={custErr.phone}
+                    placeholder="0771234567"
+                  />
+                  <PhoneWithWhatsapp
+                    label="Other phone"
+                    value={cust.altPhone}
+                    onChange={(v) => editCust({ altPhone: v })}
+                    onBlur={() => checkCustField("altPhone")}
+                    whatsapp={wa.altPhoneWhatsapp}
+                    onWhatsapp={(on) => setWa((w) => ({ ...w, altPhoneWhatsapp: on }))}
+                    error={custErr.altPhone}
+                    placeholder="Optional"
+                  />
+                  {needsWaBox && (
+                    <WhatsappNumberField
+                      className="sm:col-span-2"
+                      value={cust.whatsappPhone}
+                      onChange={(v) => editCust({ whatsappPhone: v })}
+                      onBlur={() => checkCustField("whatsappPhone")}
+                      error={custErr.whatsappPhone}
+                    />
+                  )}
                   <Field label="Email" error={custErr.email} className="sm:col-span-2">
                     <Input
                       type="email"
@@ -521,12 +556,23 @@ export function BookingWizard({
                 )}
                 {sesErr.packageId && <p className="mt-1 text-xs text-rose-600">{sesErr.packageId[0]}</p>}
               </div>
-              <Field label="Date" required error={sesErr.serviceDate}>
+              <Field label={ses.days > 1 ? "First day" : "Date"} required error={sesErr.serviceDate}>
                 <Input type="date" min={today} value={ses.serviceDate} onChange={(e) => setSes({ ...ses, serviceDate: e.target.value })} />
               </Field>
               <Field label="Start time" required error={sesErr.startTime} hint={selectedPackage ? `Session runs ${selectedPackage.durationHours} hours from this time${endsNextDay ? ` (until ${niceTime(endTime)} next day)` : ` (until ${niceTime(endTime)})`}` : undefined}>
                 <Input type="time" value={ses.startTime} onChange={(e) => setSes({ ...ses, startTime: e.target.value })} />
               </Field>
+              <DaysStepper
+                className="sm:col-span-2"
+                value={ses.days}
+                onChange={(days) => {
+                  setSes({ ...ses, days });
+                  setSesErr((er) => ({ ...er, days: undefined }));
+                }}
+                startDate={ses.serviceDate}
+                price={selectedPackage?.price}
+                error={sesErr.days}
+              />
 
               <div className="sm:col-span-2">
                 <div className="mb-1.5 text-xs font-medium text-ink/80">Where is the care?</div>
@@ -602,13 +648,16 @@ export function BookingWizard({
             <div className="mt-6 flex max-w-2xl items-center justify-between rounded-2xl border border-white bg-white/70 px-5 py-4">
               <div className="text-sm">
                 <div className="font-medium">
-                  {niceDate(ses.serviceDate)} · {niceTime(ses.startTime)}
+                  {nicePeriod(ses.serviceDate, ses.days)} · {niceTime(ses.startTime)}
+                  {ses.days > 1 && <span className="ml-1.5 text-muted">({dayCount(ses.days)})</span>}
                 </div>
-                <div className="text-xs text-muted">{selectedPackage ? `${selectedPackage.name} · ${selectedPackage.durationHours}-hour session` : "No package selected"} · goes to the call list as Pending</div>
+                <div className="text-xs text-muted">
+                  {selectedPackage ? `${selectedPackage.name} · ${selectedPackage.durationHours}-hour session${ses.days > 1 ? " each day" : ""}` : "No package selected"} · goes to the call list as Pending
+                </div>
               </div>
               <div className="text-right">
-                <div className="text-xs text-muted">Price</div>
-                <div className="text-lg font-semibold">{selectedPackage ? money(selectedPackage.price) : "—"}</div>
+                <div className="whitespace-nowrap text-xs text-muted">{ses.days > 1 && selectedPackage ? `${money(selectedPackage.price)} × ${ses.days}` : "Price"}</div>
+                <div className="whitespace-nowrap text-lg font-semibold">{selectedPackage ? money(Number(selectedPackage.price) * ses.days) : "—"}</div>
               </div>
             </div>
 
@@ -630,8 +679,17 @@ export function BookingWizard({
               <Check size={30} />
             </div>
             <h1 className="mt-5 text-2xl font-semibold">Booking {done.bookingNo} recorded</h1>
-            <p className="mt-1 text-sm text-muted">It&apos;s on the call list as Pending for {niceDate(ses.serviceDate)}.</p>
-            <div className="mt-8 flex flex-wrap justify-center gap-2">
+            <p className="mt-1 text-sm text-muted">
+              It&apos;s on the call list as Pending for {niceDate(ses.serviceDate)}
+              {ses.days > 1 ? ` (${dayCount(ses.days)}, until ${niceDate(endDateOf(ses.serviceDate, ses.days))})` : ""}.
+            </p>
+            <div className="mt-7 flex flex-wrap justify-center gap-2">
+              <WhatsappShare kind="booking" id={done.id} docNo={done.bookingNo} customerId={done.customerId} number={done.whatsappNumber} />
+              <LinkButton href={`/bookings/${done.bookingNo}/print`} variant="secondary">
+                <Printer size={16} /> Print booking
+              </LinkButton>
+            </div>
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
               <LinkButton href={`/bookings/${done.bookingNo}`} variant="secondary">
                 View booking
               </LinkButton>

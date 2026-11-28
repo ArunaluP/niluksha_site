@@ -8,6 +8,7 @@ import type { ActionResult } from "@/lib/action";
 import { Button, cn, Field, Input, Select, Textarea, type ButtonVariant } from "@/components/ui";
 import { Dialog } from "@/components/ui/client";
 import { parseNic } from "@/lib/lk-rules";
+import { PhoneWithWhatsapp, WhatsappNumberField } from "./whatsapp-phone";
 
 export type FieldDef = {
   name: string;
@@ -27,6 +28,10 @@ export type FieldDef = {
   showWhen?: { field: string; value: string };
   createOnly?: boolean;
   editOnly?: boolean;
+  /** Phone box with a "WhatsApp" tick in front; the tick's value is sent as this field name (true/false). */
+  whatsapp?: string;
+  /** The WhatsApp number box: only shown while no ticked phone box has a number. */
+  whatsappFallback?: boolean;
 };
 
 type Values = Record<string, string | boolean>;
@@ -75,13 +80,19 @@ export function EntityFormButton<R>({
   autoFill?: { field: string; value: string; values: Values };
 }) {
   const visible = fields.filter((f) => (mode === "create" ? !f.editOnly : !f.createOnly));
-  const start = () => Object.fromEntries(visible.map((f) => [f.name, initial?.[f.name] ?? (f.type === "checkbox" ? false : "")])) as Values;
+  const start = () =>
+    Object.fromEntries([
+      ...visible.map((f) => [f.name, initial?.[f.name] ?? (f.type === "checkbox" ? false : "")]),
+      ...visible.filter((f) => f.whatsapp).map((f) => [f.whatsapp!, initial?.[f.whatsapp!] ?? true]),
+    ]) as Values;
 
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Values>(start);
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>({});
   const [pending, startT] = useTransition();
-  const shown = visible.filter((f) => !f.showWhen || values[f.showWhen.field] === f.showWhen.value);
+  // The WhatsApp box is needed only when no ticked phone box has a number.
+  const tickedPhone = visible.some((f) => f.whatsapp && values[f.whatsapp] && String(values[f.name] ?? "").trim());
+  const shown = visible.filter((f) => (!f.showWhen || values[f.showWhen.field] === f.showWhen.value) && (!f.whatsappFallback || !tickedPhone));
   const router = useRouter();
 
   /** A valid NIC replaces the date of birth and gender with what the NIC says. */
@@ -95,6 +106,7 @@ export function EntityFormButton<R>({
 
   function submit() {
     const payload: Record<string, unknown> = { ...extra };
+    for (const f of shown) if (f.whatsapp) payload[f.whatsapp] = Boolean(values[f.whatsapp]);
     for (const f of shown) {
       const v = values[f.name];
       if (typeof v === "boolean") payload[f.name] = v;
@@ -145,6 +157,26 @@ export function EntityFormButton<R>({
                 setValues((s) => ({ ...s, ...fill, [f.name]: nv }));
                 if (Object.keys(fill).length) setErrors((e) => ({ ...e, ...Object.fromEntries(Object.keys(fill).map((k) => [k, undefined])) }));
               };
+              if (f.whatsapp) {
+                return (
+                  <PhoneWithWhatsapp
+                    key={f.name}
+                    label={f.label}
+                    required={f.required}
+                    value={String(v)}
+                    onChange={(nv) => set(nv)}
+                    whatsapp={Boolean(values[f.whatsapp])}
+                    onWhatsapp={(on) => setValues((s) => ({ ...s, [f.whatsapp!]: on }))}
+                    error={errors[f.name]}
+                    hint={f.hint}
+                    placeholder={f.placeholder}
+                    className={span(f)}
+                  />
+                );
+              }
+              if (f.whatsappFallback) {
+                return <WhatsappNumberField key={f.name} value={String(v)} onChange={(nv) => set(nv)} error={errors[f.name]} className="sm:col-span-6" />;
+              }
               if (f.type === "checkbox") {
                 return (
                   <label key={f.name} className={cn("flex items-center gap-2.5 text-sm", span(f))}>

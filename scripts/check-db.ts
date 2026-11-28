@@ -9,8 +9,8 @@ import { getTableConfig, MySqlTable } from "drizzle-orm/mysql-core";
 import * as schema from "../src/db/schema";
 
 const EXPECTED_TABLES = [
-  "booking_status_logs", "bookings", "branches", "customers", "employee_leaves", "employees",
-  "hospitals", "invoices", "packages", "patients", "sequences", "settings", "users",
+  "booking_links", "booking_status_logs", "bookings", "branches", "customers", "employee_leaves", "employee_photos", "employees", "export_logs", "google_drive_connection",
+  "hospitals", "invoice_links", "invoices", "packages", "patients", "sequences", "settings", "users",
 ];
 
 async function main() {

@@ -1,7 +1,7 @@
 import { FileText, Search } from "lucide-react";
 import Link from "next/link";
 import { Pager, Tabs, withParams } from "@/components/app/list-tools";
-import { Avatar, Button, Card, EmptyState, LinkButton, money, niceDate, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Avatar, Button, Card, DaysTag, EmptyState, LinkButton, money, niceDate, nicePeriod, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { InvoiceListQuery, listInvoices } from "@/features/invoices/service";
 import { requirePermission } from "@/lib/dal";
 
@@ -17,6 +17,7 @@ type Row = {
   bookingId: number;
   bookingNo: string;
   serviceDate: string;
+  days: number;
   customerName: string;
   customerPhone: string;
   branchName: string;
@@ -95,7 +96,10 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
                       <Link href={`/bookings/${i.bookingNo}`} className="hover:text-accent">
                         {i.bookingNo}
                       </Link>
-                      <div className="text-xs text-muted">Session {niceDate(i.serviceDate)}</div>
+                      <div className="text-xs text-muted">
+                        Session {nicePeriod(i.serviceDate, i.days)}
+                        <DaysTag days={i.days} />
+                      </div>
                     </Td>
                     <Td>{i.branchName}</Td>
                     <Td>

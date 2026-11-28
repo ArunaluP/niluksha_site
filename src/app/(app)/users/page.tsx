@@ -25,7 +25,7 @@ export default async function UsersPage() {
       options: [
         { value: "admin", label: "Director — full access" },
         { value: "call_center", label: "Call Center — daily bookings & invoices" },
-        { value: "branch_manager", label: "Branch Manager — view own branch" },
+        { value: "branch_manager", label: "Branch Manager — new bookings + own branch" },
       ],
     },
     { name: "branchId", label: "Branch", type: "select", numeric: true, options: branchList.map((b) => ({ value: String(b.id), label: b.name })), hint: "Required for Branch Managers" },

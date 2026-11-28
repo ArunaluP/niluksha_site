@@ -4,6 +4,7 @@
  * Server actions used by the screens. Each one is a thin wrapper:
  * protectedAction (login + permission + validation) → the same service the REST API uses.
  */
+import { loadBookingConfirmation } from "@/features/bookings/confirmation";
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 import {
@@ -39,8 +40,8 @@ export const ignoreBookingAction = protectedAction({ permission: "useCallList", 
   return null;
 });
 
-export const availableEmployeesAction = protectedAction({ permission: "assignEmployee", schema: z.object({ id }) }, async ({ id }) =>
-  getAvailableForBooking(id),
+export const availableEmployeesAction = protectedAction({ permission: "assignEmployee", schema: z.object({ id }) }, async ({ id }, user) =>
+  getAvailableForBooking(id, user),
 );
 
 export const assignEmployeeAction = protectedAction(
@@ -68,7 +69,9 @@ export const deliverBookingAction = protectedAction({ permission: "markDelivered
 export const createBookingAction = protectedAction({ permission: "createBooking", schema: BookingCreateSchema }, async (input, user) => {
   const b = await createBooking(input, user);
   refresh();
-  return { id: b.id, bookingNo: b.bookingNo };
+  // for "Send on WhatsApp" on the done screen
+  const c = await loadBookingConfirmation(b.id);
+  return { id: b.id, bookingNo: b.bookingNo, customerId: c?.customerId ?? input.customerId, whatsappNumber: c?.whatsappNumber ?? null };
 });
 
 export const updateBookingAction = protectedAction(

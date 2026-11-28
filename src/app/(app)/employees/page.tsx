@@ -1,20 +1,17 @@
 import { asc } from "drizzle-orm";
-import { Search, UserRound } from "lucide-react";
+import { Plus, Search, UserRound } from "lucide-react";
 import Link from "next/link";
-import { EntityFormButton } from "@/components/app/entity-form";
 import { Pager, withParams } from "@/components/app/list-tools";
-import { Avatar, Button, Card, cn, EmptyState, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
+import { Avatar, Button, Card, cn, EmptyState, employeePhotoUrl, LinkButton, PageHeader, StatusBadge, Table, Td, Th } from "@/components/ui";
 import { db } from "@/db";
 import { branches, DESIGNATIONS } from "@/db/schema";
 import { EmployeeListQuery, listEmployees } from "@/features/employees/service";
 import { requirePermission } from "@/lib/dal";
 import { hasPermission } from "@/lib/permissions";
-import { createEmployeeAction } from "../_actions/records";
-import { employeeFields } from "./fields";
 
 export const metadata = { title: "Employees · Care Booking" };
 
-type Row = { id: number; empNo: string; fullName: string; designation: string; branchId: number; branchName: string; phone: string; nic: string | null; status: string };
+type Row = { id: number; empNo: string; fileNo: string | null; photoAt: Date | null; fullName: string; designation: string; branchId: number; branchName: string; phone: string; nic: string | null; status: string };
 
 export default async function EmployeesPage({ searchParams }: PageProps<"/employees">) {
   const user = await requirePermission("viewMasterData");
@@ -30,8 +27,14 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/employ
     <div>
       <PageHeader
         title="Employees"
-        subtitle={isManager ? "Staff of your branch (view only)" : "Caregivers, nurses and office staff across all branches"}
-        actions={canEdit && <EntityFormButton mode="create" title="Add employee" subtitle="An employee number is created automatically" fields={employeeFields(branchList)} initial={{ designation: "Caregiver" }} action={createEmployeeAction} success="Employee added" buttonLabel="Add employee" wide />}
+        subtitle={isManager ? "Staff of your branch: register, edit and record leave" : "Caregivers, nurses and office staff across all branches"}
+        actions={
+          canEdit && (
+            <LinkButton href="/employees/new">
+              <Plus size={15} /> Register employee
+            </LinkButton>
+          )
+        }
       />
 
       <div className="grid gap-5 lg:grid-cols-[230px_1fr] lg:items-start">
@@ -91,10 +94,13 @@ export default async function EmployeesPage({ searchParams }: PageProps<"/employ
                     <tr key={e.id} className="transition hover:bg-white/50">
                       <Td className="min-w-[220px]">
                         <Link href={`/employees/${e.id}`} className="flex items-center gap-2.5">
-                          <Avatar name={e.fullName} size="sm" />
+                          <Avatar name={e.fullName} size="sm" src={employeePhotoUrl(e)} />
                           <div>
                             <div className="font-medium hover:text-accent">{e.fullName}</div>
-                            <div className="text-xs text-muted">{e.empNo}</div>
+                            <div className="text-xs text-muted">
+                              {e.fileNo ? `No. ${e.fileNo} · ` : ""}
+                              {e.empNo}
+                            </div>
                           </div>
                         </Link>
                       </Td>
